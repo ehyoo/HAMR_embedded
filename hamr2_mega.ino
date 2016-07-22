@@ -1,7 +1,3 @@
-#include <libas.h>
-
-#include <Wire.h>
-
 #include "pid.h"
 #include "motor.h"
 #include "localize.h"
@@ -9,8 +5,13 @@
 #include "dd_control.h"
 #include "constants.h"
 #include "holonomic_control.h"
+#include <Wire.h> // I2C Communication, 
+#include <libas.h> // SSI Communication
 
-// ROS things 
+/*******************************/
+/*   ROS Serial Communication  */
+/*******************************/
+// Message Importing
 #include <ros.h>
 #include <hamr_test/HamrStatus.h>
 #include <hamr_test/MotorStatus.h>
@@ -18,39 +19,35 @@
 #include <hamr_test/HoloStatus.h>
 #include <hamr_test/VelocityStatus.h>
 #include <ros/time.h>
+
+// Node and Publishing
 ros::NodeHandle nh;
+hamr_test::HamrStatus hamrStatus;
+hamr_test::MotorStatus leftMotor;
+hamr_test::MotorStatus rightMotor;
+hamr_test::MotorStatus turretMotor;
+// By default, should publish to hamr_state topic
+ros::Publisher pub("hamr_state", &hamrStatus);
 
-// Publishing
-//hamr_test::HamrStatus hamrStatus;
-//hamr_test::MotorStatus leftMotor;
-//hamr_test::MotorStatus rightMotor;
-//hamr_test::MotorStatus turretMotor;
-//ros::Publisher pub("hamr_state", &hamrStatus);
+// Holonomic debugging 
+// hamr_test::HoloStatus holoStatus;
+// ros::Publisher pub("holo_state", &holoStatus);
 
-hamr_test::HoloStatus holoStatus;
-ros::Publisher pub("holo_state", &holoStatus);
-
-//hamr_test::VelocityStatus velStatus;
-//ros::Publisher pub("vel_state", &velStatus);
+// Turret Velocity debugging messages
+// hamr_test::VelocityStatus velStatus;
+// ros::Publisher pub("vel_state", &velStatus);
   
 // Subscribing
-  // TODO: Make a separate message for commands? 
-  // Or we can just continue to use the HamrStatus message and do validations on
-  // the arduino side. 
 void commandCallback(const hamr_test::HamrCommand& command_msg);
 ros::Subscriber<hamr_test::HamrCommand> sub("hamr_command", &commandCallback);
 
-
-
-/* -------------------------------------------------------*/
-/* These following values are modifiable through serial communication or determined by a control output */
-
-/*this value is updated by the control software. if it is true, the arduino will send data through the send_serial function */
-int send_data = 0;
-
-/* DESIRED VALUES */
+/******************/
+/* Desired Values */
+/******************/
 // holonomic velocities
-float desired_h_xdot = 0; float desired_h_ydot = 0; float desired_h_rdot = 0;
+float desired_h_xdot = 0; 
+float desired_h_ydot = 0; 
+float desired_h_rdot = 0;
 
 // differential drive velocities
 float desired_dd_v = 0; // Diff Drive (m/s)
@@ -58,7 +55,30 @@ float desired_dd_r = 0; // desired angular velocity for Diff Drive: set between 
 // float speed_req_turret = 0.0; // Turret (rad/s)?
 
 // motor velocities
-float desired_M1_v = 0; float desired_M2_v = 0; float desired_MT_v = 0;
+float desired_M1_v = 0; 
+float desired_M2_v = 0; 
+float desired_MT_v = 0;
+
+/*****************/
+/* Sensed Values */
+/*****************/
+// sensed motor velocities at a specific point in time
+float sensed_M1_v = 0.0;
+float sensed_M2_v = 0.0;
+float sensed_MT_v = 0.0;
+
+// Previously sensed velocities
+// Used in the current implementation of the low-pass filter
+float sensed_M1_v_prev = 0.0;
+float sensed_M2_v_prev = 0.0;
+float sensed_MT_v_prev = 0.0;
+
+// Velocity after the sensed_M[x]_v is passed through the filter
+// NOTE: This should be the velocity used for all calculations
+float sensed_M1_v_filt = 0.0;
+float sensed_M2_v_filt = 0.0;
+float sensed_MT_v_filt = 0.0;
+
 
 // motor PWMs
 int pwm_M1 = 0;
@@ -68,102 +88,81 @@ float M1_v_cmd = 0;
 float M2_v_cmd = 0;
 float MT_v_cmd = 0;
 
-/* CONTROL PARAMETERS */
-// PID Values are to be changed later- they work enough for now. 
+/**********************/
+/* Control Parameters */
+/**********************/
+// Low-level PID 
 PID_Vars pid_vars_M1(0.6, 10.0, 0.005);
 PID_Vars pid_vars_M2(0.6, 10.0, 0.005);
 PID_Vars pid_vars_MT(0.005, 0.07, 0.0);
 PID_Vars dd_ctrl(0.1, 0.0, 0.0);
 
-// PID_Vars pid_vars_dd_v(1.0, 0.0, 0.0);
-// PID_Vars pid_vars_dd_r(1.0, 0.0, 0.0);
+// Holonomic PID- NOT BEING USED
 PID_Vars pid_vars_h_xdot(0.1, 0.0, 0.0);
 PID_Vars pid_vars_h_ydot(0.1, 0.0, 0.0);
 PID_Vars pid_vars_h_rdot(0.001, 0.0, 0.0);
 
 // Velocity control command
-float h_xdot_cmd = 0; float h_ydot_cmd = 0; float h_rdot_cmd = 0; //holonomic
+float h_xdot_cmd = 0; 
+float h_ydot_cmd = 0; 
+float h_rdot_cmd = 0; //holonomic
 float dtheta_cmd = 0; //differential drive
-/* -------------------------------------------------------*/
-/* -------------------------------------------------------*/
 
-/* SENSORS -----------------------------------------------*/
+/**********************/
+/*       Sensor       */
+/**********************/
 // decoder counts
+// M1 and M2 are between 0 and 4095
+// MT is between 0 and 1093
 int decoder_count_M1 = 0;
 int decoder_count_M2 = 0;
 int decoder_count_MT = 0;
 
-const int AVG_FILT_SZ = 5; // this was originally 5
+// Size of the array used for the lowpass filter
+// If the array low pass filter is commented out (which it usually is)
+// this should not be used
+const int AVG_FILT_SZ = 5;
 
-
+// Arrays for said lowpass filters
 float decoder_count_arr_M1[AVG_FILT_SZ];
 float decoder_count_arr_M2[AVG_FILT_SZ];
-float decoder_count_arr_MT[10];
+float decoder_count_arr_MT[10]; // arbitrarily set to 10
 
+// Previously recorded motor readings- used to find velocity
 int decoder_count_M1_prev = 0;
 int decoder_count_M2_prev = 0;
 int decoder_count_MT_prev = 0;
 
+// Summation of turret 
+// TODO: This will eventually overflow after a long time 
+// This is a corner case that shouldn't happen in normal operation, but still.
 long decoder_turret_total = 0;
 
-// encoders
-// Encoder counting interrupt functions
-//void rencoderA_M1(); void rencoderB_M1();
-//void rencoderA_M2(); void rencoderB_M2();
-//void rencoderA_MT(); void rencoderB_MT();
 
-/* encoder counters */
 
-//volatile long curr_count_M1 = 0; volatile long prev_count_M1 = 0;
-//volatile long curr_count_M2 = 0; volatile long prev_count_M2 = 0;
-volatile long curr_count_MT = 0; volatile long prev_count_MT = 0;
-//volatile long curr_count_M1 = 0; volatile long prev_count_M1 = 0;
-//volatile long curr_count_M2 = 0; volatile long prev_count_M2 = 0;
-//volatile long curr_count_MT = 0; volatile long prev_count_MT = 0;
-
-/* encoder output state */
-int interrupt_M1_A = 0; int interrupt_M1_B = 0;
-int interrupt_M2_A = 0; int interrupt_M2_B = 0;
-int interrupt_MT_A = 0; int interrupt_MT_B = 0;
-
-/* measured velocities */
-float sensed_M1_v = 0.0;
-float sensed_M2_v = 0.0;
-float sensed_MT_v = 0.0;
-
-float sensed_M1_v_prev = 0.0;
-float sensed_M2_v_prev = 0.0;
-float sensed_MT_v_prev = 0.0;
-
-float sensed_M1_v_filt = 0.0;
-float sensed_M2_v_filt = 0.0;
-float sensed_MT_v_filt = 0.0;
-
-/* computed holonomic velocities */
+// Computed holonomic velocities
 float computed_xdot = 0.0;
 float computed_ydot = 0.0;
 float computed_tdot = 0.0;
 
-/* IMU settings */
+/**********************/
+/*    IMU Settings    */
+/**********************/
+// This is not used because we don't have an IMU
 const float SENSOR_LOOPTIME = 10; //10000 //remeber to update this to microseconds later, or an exact timing method if possible
 unsigned long next_sensor_time = millis(); // micros()
 unsigned long prev_micros = 0;
 float sensed_drive_angle = 0;
 
-/* -------------------------------------------------------*/
-/* -------------------------------------------------------*/
-
-// timing: main loop
-unsigned long startMilli;
-unsigned long lastMilli = 0;
-float t_elapsed;
+/************************/
+/*        Timing        */
+/************************/
+unsigned long start_time; // Time at which the arduino starts
+unsigned long last_recorded_time = 0; // The last recorded time. Mostly for testing purposes
+float time_elapsed; // start_time - last_recorded_time
 
 // dd localization
 location hamr_loc;
-
-// Some quick (somewhat hacky) setup
-void init_actuators();
-void init_I2C();
 
 float pidError; // PID debugging for turret. See pid.h
 float dummy1;
@@ -183,13 +182,10 @@ void setup() {
   init_I2C();                 // initialize I2C bus as master
 
   // delay(2500);
-  startMilli = millis(); //startMicro = micros()
+  start_time = millis(); //startMicro = micros()
 }
 
-unsigned long startTestTime;
-bool squareTestDidStart = false;
-bool rightTestDidStart = false;
-bool timerSet = false;
+
 
 /*SQUARE VIDEO TEST*/
 void square_vid_test() {
@@ -245,28 +241,28 @@ void right_angle_vid_test() {
 }
 
 void zipper_path() {
-    if(millis() < startMilli + 4000){
+    if(millis() < start_time + 4000){
       desired_h_xdot = .2;
       desired_h_ydot = 0;
-    } else if(millis() < startMilli + 8000){
+    } else if(millis() < start_time + 8000){
       desired_h_xdot = 0;
       desired_h_ydot = .2;
-    } else if(millis() < startMilli + 12000){
+    } else if(millis() < start_time + 12000){
       desired_h_xdot = -.2;
       desired_h_ydot = 0;
-    } else if(millis() < startMilli + 16000){
+    } else if(millis() < start_time + 16000){
       desired_h_xdot = 0;
       desired_h_ydot = .2;
-    } else if(millis() < startMilli + 20000){
+    } else if(millis() < start_time + 20000){
       desired_h_xdot = .2;
       desired_h_ydot = 0;
-    } else if(millis() < startMilli + 24000){
+    } else if(millis() < start_time + 24000){
       desired_h_xdot = 0;
       desired_h_ydot = .2;
-    } else if(millis() < startMilli + 28000){
+    } else if(millis() < start_time + 28000){
       desired_h_xdot = -.2;
       desired_h_ydot = 0;
-    } else if(millis() < startMilli + 32000){
+    } else if(millis() < start_time + 32000){
       desired_h_xdot = 0;
       desired_h_ydot = .2;
     }else {
@@ -300,15 +296,15 @@ void loop() {
 
     //forward_test();
 
-    loop_time_duration = millis() - lastMilli;
+    loop_time_duration = millis() - last_recorded_time;
     
-    if ((millis() - lastMilli) >= LOOPTIME) { //micros() - lastMicro()
+    if ((millis() - last_recorded_time) >= LOOPTIME) { //micros() - lastMicro()
       //serial communication
       //read_serial();
       
 
-      t_elapsed = (float) (millis() - lastMilli); // (micros() - lastMicros) / 1000.0
-      lastMilli = millis();
+      time_elapsed = (float) (millis() - last_recorded_time); // (micros() - lastMicros) / 1000.0
+      last_recorded_time = millis();
 
       //      Serial.println(decoder_count_M1);
       //      unsigned int diff = decoder_count_M1;
@@ -345,7 +341,8 @@ void loop() {
 //         desired_M2_v = desired_dd_v;
 //       } else if (use_dd_control == 1) {
 //         // Differential drive control
-//         angle_control(&dd_ctrl, desired_dd_r, hamr_loc.w, &dtheta_cmd, desired_dd_v, &desired_M1_v, &desired_M2_v, WHEEL_DIST, WHEEL_RADIUS, t_elapsed);
+//         angle_control(&dd_ctrl, desired_dd_r, hamr_loc.w, &dtheta_cmd, desired_dd_v, &desired_M1_v, &desired_M2_v, WHEEL_DIST, WHEEL_RADIUS, time_elapsed
+  );
 //       } else {
 //        // use indiv setpoints
 //        desired_M1_v = -1 * (desired_dd_v - (WHEEL_DIST/2.0) * PI/2.0);
@@ -376,9 +373,9 @@ void loop() {
 
       // UNCOMMENT THE FOLLOWING LINE TO ENABLE HOLONOMIC PID
       // holonomic PID
-//       h_xdot_cmd = pid_vars_h_xdot.update_pid(desired_h_xdot, computed_xdot, t_elapsed);
-//       h_ydot_cmd = pid_vars_h_ydot.update_pid(desired_h_ydot, computed_ydot, t_elapsed);
-//       h_rdot_cmd = pid_vars_h_rdot.update_pid(desired_h_rdot, computed_tdot * 180 / PI, t_elapsed);
+//       h_xdot_cmd = pid_vars_h_xdot.update_pid(desired_h_xdot, computed_xdot, time_elapsed);
+//       h_ydot_cmd = pid_vars_h_ydot.update_pid(desired_h_ydot, computed_ydot, time_elapsed);
+//       h_rdot_cmd = pid_vars_h_rdot.update_pid(desired_h_rdot, computed_tdot * 180 / PI, time_elapsed);
 
 //PUT THIS BACK IN
       // using output of holonomic PID, compute jacobian values for motor inputs
@@ -391,7 +388,7 @@ void loop() {
                 desired_M1_v,
                 sensed_M1_v,
                 &M1_v_cmd,
-                t_elapsed,
+                time_elapsed,
                 &pwm_M1,
                 M1_DIR_PIN,
                 M1_PWM_PIN,
@@ -401,71 +398,21 @@ void loop() {
                  desired_M2_v,
                  sensed_M2_v,
                  &M2_v_cmd,
-                 t_elapsed,
+                 time_elapsed,
                  &pwm_M2,
                  M2_DIR_PIN,
                  M2_PWM_PIN,
                  &dummy2);
-//                 
-//      set_speed(&pid_vars_MT,
-//                desired_MT_v,
-//                sensed_MT_v,
-//                &MT_v_cmd,
-//                t_elapsed,
-//                &pwm_MT,
-//                MT_DIR_PIN,
-//                MT_PWM_PIN,
-//                &pidError);
-//
+
       set_speed_of_turret(&pid_vars_MT,
                 desired_MT_v,
                 sensed_MT_v,
                 &MT_v_cmd,
-                t_elapsed,
+                time_elapsed,
                 &pwm_MT,
                 MT_DIR_PIN,
                 MT_PWM_PIN,
                 &pidError);
-        
-      
-      //      Serial.println(decoder_count_M1);
-      //      diff = diff - decoder_count_M1;
-      //      Serial.println(diff);
-
-
-
-
-            
-      //
-      // Serial.print(hamr_loc.w);  Serial.print(" ");
-      // Serial.println(computed_tdot);
-      // Serial.println(computed_tdot - sensed_MT_v);
-
-      // Serial.print(desired_MT_v); Serial.print(" ");
-      // desired_MT_v = -(hamr_loc.w + h_rdot_cmd);
-      // Serial.println(desired_MT_v);
-
-      // Serial.println(desired_MT_v);
-
-      // Serial.println(desired_M1_v);
-      
-      //desired_MT_v *= 180.0 / PI;
-
-      // desired_MT_v is
-
-      // Serial.println(desired_MT_v);
-      /* END HOLONOMIC CONDTROL */
-      /* ********************** */
-
-      // Serial.println(desired_MT_v);
-      
-//
-//      Serial.print("Desired\n");
-//      Serial.print(desired_M1_v);
-//      Serial.print("\n");
-//      Serial.print("PWM\n");
-//      Serial.print(M1_PWM_PIN);
-//      Serial.print("\n");
     }
 
     //analogWrite(MT_PWM_PIN, 50);
@@ -540,14 +487,6 @@ void commandCallback(const hamr_test::HamrCommand& command_msg) {
   String val = command_msg.val;
 
   switch (type) {
-      case SIG_START_LOG:
-        send_data = 1;
-        break;
-
-      case SIG_STOP_LOG:
-        send_data = 0;
-        break;
-
       // holonomic inputs
       case SIG_HOLO_X:
         sig_var = &desired_h_xdot;
@@ -727,7 +666,8 @@ void send_serial() {
 
     // turret velocity debugging things
 //    velStatus.sensed_t_motor_enc_value = decoder_count_MT;
-//    velStatus.sensed_t_motor_velocity = (int) (((float(turret_tick_change)/1023))/(t_elapsed/1000) * 1000);
+//    velStatus.sensed_t_motor_velocity = (int) (((float(turret_tick_change)/1023))/(time_elapsed
+  /1000) * 1000);
 //    velStatus.sensed_turret_position = (int) (360 * sensed_drive_angle);
 //    velStatus.sensed_turret_velocity = (int) (sensed_MT_v * 100);
 //    velStatus.desired_turret_velocity = (int) (desired_MT_v * 100);
@@ -874,15 +814,19 @@ void compute_sensed_motor_velocities() {
 //  float decoder_count_change_filt_MT = compute_avg(decoder_count_arr_MT, AVG_FILT_SZ);
 
   // compute robot velocities
-//  sensed_M1_v = get_speed(decoder_count_change_filt_M1, TICKS_PER_REV_DDRIVE, DIST_PER_REV, t_elapsed);
-//  sensed_M2_v = get_speed(decoder_count_change_filt_M2, TICKS_PER_REV_DDRIVE, DIST_PER_REV, t_elapsed);
-//  sensed_MT_v = get_speed(decoder_count_change_filt_MT, TICKS_PER_REV_DDRIVE, DIST_PER_REV, t_elapsed);
-//  sensed_MT_v = get_ang_speed(decoder_count_change_filt_MT, TICKS_PER_REV_TURRET, t_elapsed);
+//  sensed_M1_v = get_speed(decoder_count_change_filt_M1, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed
+);
+//  sensed_M2_v = get_speed(decoder_count_change_filt_M2, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed);
+//  sensed_MT_v = get_speed(decoder_count_change_filt_MT, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed);
+//  sensed_MT_v = get_ang_speed(decoder_count_change_filt_MT, TICKS_PER_REV_TURRET, time_elapsed);
 
 // Low-pass Filter
-  float currentVelRight = get_speed_from_difference(decoder_count_change_M1, TICKS_PER_REV_DDRIVE, DIST_PER_REV, t_elapsed);
-  float currentVelLeft = get_speed_from_difference(decoder_count_change_M2, TICKS_PER_REV_DDRIVE, DIST_PER_REV, t_elapsed);
-  float currentVelTurret = get_ang_speed_from_difference(decoder_count_change_MT, TICKS_PER_REV_TURRET, t_elapsed);
+  float currentVelRight = get_speed_from_difference(decoder_count_change_M1, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed
+  );
+  float currentVelLeft = get_speed_from_difference(decoder_count_change_M2, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed
+  );
+  float currentVelTurret = get_ang_speed_from_difference(decoder_count_change_MT, TICKS_PER_REV_TURRET, time_elapsed
+  );
 //
   float beta = 0.6; //0.386;
   
@@ -899,7 +843,8 @@ void compute_sensed_motor_velocities() {
 
   // a = beta * (encoderB) + (1 - beta) * encoderBOld (beta is <= 1)
 
-  hamr_loc.update(sensed_M1_v, sensed_M2_v, WHEEL_DIST, t_elapsed);
+  hamr_loc.update(sensed_M1_v, sensed_M2_v, WHEEL_DIST, time_elapsed
+  );
 }
 
 /* initialize encoder interrupts for turret motor */
