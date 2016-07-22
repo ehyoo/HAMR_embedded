@@ -1,3 +1,6 @@
+// M1 => RIGHT MOTOR
+// M2 => LEFT MOTOR
+// MT => TURRET MOTOR
 #include "pid.h"
 #include "motor.h"
 #include "localize.h"
@@ -41,6 +44,12 @@ ros::Publisher pub("hamr_state", &hamrStatus);
 void commandCallback(const hamr_test::HamrCommand& command_msg);
 ros::Subscriber<hamr_test::HamrCommand> sub("hamr_command", &commandCallback);
 
+/***************************************************/
+/*                                                 */
+/*                   VARIABLES                     */
+/*                                                 */
+/***************************************************/
+
 /******************/
 /* Desired Values */
 /******************/
@@ -79,7 +88,23 @@ float sensed_M1_v_filt = 0.0;
 float sensed_M2_v_filt = 0.0;
 float sensed_MT_v_filt = 0.0;
 
+/************************/
+/*    Computed Values   */
+/************************/
+// Computed holonomic velocities
+float computed_xdot = 0.0;
+float computed_ydot = 0.0;
+float computed_tdot = 0.0;
 
+// Summation of turret 
+// TODO: This will eventually overflow after a long time 
+// This is a corner case that shouldn't happen in normal operation, but still.
+long decoder_turret_total = 0;
+
+/******************/
+/* Set Speed Vars */
+/******************/
+// NOTE: I don't see why these should be vars in the main file
 // motor PWMs
 int pwm_M1 = 0;
 int pwm_M2 = 0;
@@ -103,6 +128,7 @@ PID_Vars pid_vars_h_ydot(0.1, 0.0, 0.0);
 PID_Vars pid_vars_h_rdot(0.001, 0.0, 0.0);
 
 // Velocity control command
+// NOTE: These vars could be deleted provided we're not doing PID stuff
 float h_xdot_cmd = 0; 
 float h_ydot_cmd = 0; 
 float h_rdot_cmd = 0; //holonomic
@@ -133,18 +159,6 @@ int decoder_count_M1_prev = 0;
 int decoder_count_M2_prev = 0;
 int decoder_count_MT_prev = 0;
 
-// Summation of turret 
-// TODO: This will eventually overflow after a long time 
-// This is a corner case that shouldn't happen in normal operation, but still.
-long decoder_turret_total = 0;
-
-
-
-// Computed holonomic velocities
-float computed_xdot = 0.0;
-float computed_ydot = 0.0;
-float computed_tdot = 0.0;
-
 /**********************/
 /*    IMU Settings    */
 /**********************/
@@ -158,322 +172,193 @@ float sensed_drive_angle = 0;
 /*        Timing        */
 /************************/
 unsigned long start_time; // Time at which the arduino starts
-unsigned long last_recorded_time = 0; // The last recorded time. Mostly for testing purposes
+unsigned long last_recorded_time = 0;
 float time_elapsed; // start_time - last_recorded_time
+int loop_time_duration; // Timing loop time- for performance testing
 
-// dd localization
-location hamr_loc;
-
-float pidError; // PID debugging for turret. See pid.h
-float dummy1;
-float dummy2;
-
-void setup() {
-  //  delay(3000);
-  nh.initNode(); // Initialize ros node
-  nh.subscribe(sub); // arduino node subscribes to topic declared above
-  nh.advertise(pub); // advertise the topic that will be published by the arduino
-   // Initial value for pidError
-  dummy1 = 0.0; // placeholders for PID errors
-  dummy2 = 0.0;
-  pinMode(40, OUTPUT); // TESTING FOR BLINKING
-  
-  init_actuators();           // initialiaze all motors
-  init_I2C();                 // initialize I2C bus as master
-
-  // delay(2500);
-  start_time = millis(); //startMicro = micros()
-}
-
-
-
-/*SQUARE VIDEO TEST*/
-void square_vid_test() {
-    if (millis() < startTestTime + 5000) {
-      desired_h_xdot = 0.0;
-      desired_h_ydot = 0.0;
-    }
-    else if(millis() < startTestTime + 10000){
-      desired_h_xdot = -.2;
-      desired_h_ydot = 0;
-    } else if(millis() < startTestTime + 15000){
-      desired_h_xdot = 0;
-      desired_h_ydot = -.2;
-    } else if(millis() < startTestTime + 20000){
-      desired_h_xdot = .2;
-      desired_h_ydot = 0;
-    } else if(millis() < startTestTime + 25000){
-      desired_h_xdot = 0;
-      desired_h_ydot = .2;
-    } else {
-      squareTestDidStart = false;
-      timerSet = false;
-      desired_h_xdot = 0;
-      desired_h_ydot = 0;
-    }
-}
-
-void forward_test() {
-//  Serial.print("going forward...\n");
-//  desired_M1_v = 1.0; 
-//  desired_M2_v = 1.0;
-//  delay(1000);
-//  desired_M1_v = 0; 
-//  desired_M2_v = 0;
-//  Serial.print("Stop.\n");
-//  delay(1000);
-}
-
-/*RIGHT ANGLE VIDEO TEST*/
-void right_angle_vid_test() {
-    if(millis() < startTestTime + 6000){
-      desired_h_xdot = 0;
-      desired_h_ydot = .2;
-    } else if(millis() < startTestTime + 12000){
-      desired_h_xdot = -.2;
-      desired_h_ydot = 0;
-    } else {
-      desired_h_xdot = 0;
-      desired_h_ydot = 0;
-      rightTestDidStart = false;
-      timerSet = false;
-    }
-}
-
-void zipper_path() {
-    if(millis() < start_time + 4000){
-      desired_h_xdot = .2;
-      desired_h_ydot = 0;
-    } else if(millis() < start_time + 8000){
-      desired_h_xdot = 0;
-      desired_h_ydot = .2;
-    } else if(millis() < start_time + 12000){
-      desired_h_xdot = -.2;
-      desired_h_ydot = 0;
-    } else if(millis() < start_time + 16000){
-      desired_h_xdot = 0;
-      desired_h_ydot = .2;
-    } else if(millis() < start_time + 20000){
-      desired_h_xdot = .2;
-      desired_h_ydot = 0;
-    } else if(millis() < start_time + 24000){
-      desired_h_xdot = 0;
-      desired_h_ydot = .2;
-    } else if(millis() < start_time + 28000){
-      desired_h_xdot = -.2;
-      desired_h_ydot = 0;
-    } else if(millis() < start_time + 32000){
-      desired_h_xdot = 0;
-      desired_h_ydot = .2;
-    }else {
-      desired_h_xdot = 0.0;
-      desired_h_ydot = 0.0;
-    }
-}
+/******************************/
+/*    Test Drive Variables    */
+/******************************/
+unsigned long start_test_time;
+bool square_test_did_start = false;
+bool right_test_did_start = false;
+bool timer_set = false;
 
 /***************************/
-/* MAIN LOOP
-  /***************************/
-void compute_sensed_motor_velocities();
-void send_serial();
+/*          Modes          */
+/***************************/
+// Use direct drive by sending false to both dif_drive and holonomic_drive
+bool use_dif_drive = true; // Sending linear velocity commands and turret commands
+bool use_holonomic_drive = false; // Full fledged holonomic drive
 
-int loop_time_duration;
+/***********************/
+/*    Miscellaneous    */
+/***********************/
+// Initial angle offset 
 int offset = 0;
 bool didSetOffset = false;
 
-void loop() {
-  int i = 0;
+// dd localization
+location hamr_loc; // This isn't being used right now. 
+// Debugging vars- we should look to delete these
+float pidError; // PID debugging for turret. See pid.h
+float dummy1 = 0;
+float dummy2 = 0;
 
-  
-  while (1) {
-    // last timing was between 900 and 1200 microseconds. the range seems high...
-    // uncomment the first and last line in while loop to test timing
-    // unsigned long start_time = micros();
-
-    //zipper_path();
-    //square_vid_test();
-    //right_angle_vid_test();
-
-    //forward_test();
-
-    loop_time_duration = millis() - last_recorded_time;
-    
-    if ((millis() - last_recorded_time) >= LOOPTIME) { //micros() - lastMicro()
-      //serial communication
-      //read_serial();
-      
-
-      time_elapsed = (float) (millis() - last_recorded_time); // (micros() - lastMicros) / 1000.0
-      last_recorded_time = millis();
-
-      //      Serial.println(decoder_count_M1);
-      //      unsigned int diff = decoder_count_M1;
-
-      compute_sensed_motor_velocities(); // read encoders
-
-      send_serial();
-
-      if (squareTestDidStart) {
-        digitalWrite(40, HIGH);
-      } else {
-        digitalWrite(40, LOW);
-      }
-
-    if (squareTestDidStart) {
-      square_vid_test();
-      if (!timerSet) {
-        startTestTime = millis();
-        timerSet = true;
-      }  
-    } else if (rightTestDidStart) {
-      right_angle_vid_test();
-      if (!timerSet) {
-        startTestTime = millis();
-        timerSet = true;
-      }
-    }
-
-//       DIFFERENTIAL DRIVE CONTROL
-//       int use_dd_control = 1;
-//       isensed_drive_anglef (use_dd_control == 0) {
-//         // PID velocity control, same input to both motors
-//         desired_M1_v = -1 * desired_dd_v;
-//         desired_M2_v = desired_dd_v;
-//       } else if (use_dd_control == 1) {
-//         // Differential drive control
-//         angle_control(&dd_ctrl, desired_dd_r, hamr_loc.w, &dtheta_cmd, desired_dd_v, &desired_M1_v, &desired_M2_v, WHEEL_DIST, WHEEL_RADIUS, time_elapsed
-  );
-//       } else {
-//        // use indiv setpoints
-//        desired_M1_v = -1 * (desired_dd_v - (WHEEL_DIST/2.0) * PI/2.0);
-//        desired_M2_v = (desired_dd_v + (WHEEL_DIST/2.0) * PI/2.0);
-//       }
-
-      //M1 is the RIGHT motor and is forward facing caster wheels
-      //M2 is LEFT
-
-      /* *********************** */
-      /* BEGIN HOLONOMIC CONTROL */
-      // compute xdot, ydot, and theta dot using the sensed motor velocties and drive angle
-
-
-      // AND THIS 
-        /*
-        STEP 1: CONVERT MOTOR VELOCITY TO ACTUAL TURRET VELOCITY
-        
-        */
-      
-      compute_global_state(-1 * sensed_M1_v, sensed_M2_v, sensed_MT_v, 2*PI*sensed_drive_angle,
-                           &computed_xdot, &computed_ydot, &computed_tdot);
-////      //
-        h_xdot_cmd = desired_h_xdot;
-        h_ydot_cmd = desired_h_ydot;
-        h_rdot_cmd = desired_h_rdot;
-      // // 
-
-      // UNCOMMENT THE FOLLOWING LINE TO ENABLE HOLONOMIC PID
-      // holonomic PID
-//       h_xdot_cmd = pid_vars_h_xdot.update_pid(desired_h_xdot, computed_xdot, time_elapsed);
-//       h_ydot_cmd = pid_vars_h_ydot.update_pid(desired_h_ydot, computed_ydot, time_elapsed);
-//       h_rdot_cmd = pid_vars_h_rdot.update_pid(desired_h_rdot, computed_tdot * 180 / PI, time_elapsed);
-
-//PUT THIS BACK IN
-      // using output of holonomic PID, compute jacobian values for motor inputs
-            set_holonomic_desired_velocities(h_xdot_cmd, h_ydot_cmd, h_rdot_cmd); // set these setpoints to the output of the holonomic PID controllers
-            get_holonomic_motor_velocities(sensed_drive_angle * 2 * PI, &desired_M1_v, &desired_M2_v, &desired_MT_v);
-//            get_holonomic_motor_velocities(hamr_loc.theta, &desired_M1_v, &desired_M2_v, &desired_MT_v);
-
-
-      set_speed(&pid_vars_M1,
-                desired_M1_v,
-                sensed_M1_v,
-                &M1_v_cmd,
-                time_elapsed,
-                &pwm_M1,
-                M1_DIR_PIN,
-                M1_PWM_PIN,
-                &dummy1);
-
-       set_speed(&pid_vars_M2,
-                 desired_M2_v,
-                 sensed_M2_v,
-                 &M2_v_cmd,
-                 time_elapsed,
-                 &pwm_M2,
-                 M2_DIR_PIN,
-                 M2_PWM_PIN,
-                 &dummy2);
-
-      set_speed_of_turret(&pid_vars_MT,
-                desired_MT_v,
-                sensed_MT_v,
-                &MT_v_cmd,
-                time_elapsed,
-                &pwm_MT,
-                MT_DIR_PIN,
-                MT_PWM_PIN,
-                &pidError);
-    }
-
-    //analogWrite(MT_PWM_PIN, 50);
-
-    // Serial.print(desired_MT_v); Serial.print(" sensed ");
-    // Serial.println(sensed_MT_v); Serial.println(decoder_count_MT);
-
-
-    // update_prevs();
-//
-//    if (next_sensor_time < micros() && is_imu_working()) {
-//      unsigned long current_micros = micros();
-//
-//      compute_imu((current_micros - prev_micros) / 1000000.0); //update imu with time change
-//
-//      sensed_drive_angle = get_current_angle() * PI / 180;
-//
-//      next_sensor_time = micros() + SENSOR_LOOPTIME;
-//      prev_micros = current_micros;
-//
-//      // potentially combine hamr_loc.theta with imu angle?
-//    } else if (!is_imu_working()) {
-//      sensed_drive_angle = hamr_loc.theta;
-//    }
-
-    float ticks = TICKS_PER_REV_TURRET;
-    sensed_drive_angle = fmod(decoder_turret_total, ticks) / (float) ticks;
-    if (sensed_drive_angle < 0) {
-      sensed_drive_angle = 1 + sensed_drive_angle;
-    } 
-
-    if (!didSetOffset) {
-      offset = sensed_drive_angle;
-      didSetOffset = true;
-    }
-    sensed_drive_angle = sensed_drive_angle - offset;
-    
-    //sensed_drive_angle = 1 - sensed_drive_angle;
-
-
-    
-    // Serial.println(sensed_drive_angle);
-
-    // unsigned long finish_time = micros();
-    // Serial.print("total_time: "); Serial.println(finish_time - start_time);
-    // Test Loop
-
-
-    //square_vid_test();
-  }
+/***************************************************/
+/*                                                 */
+/*                      SETUP                      */
+/*                                                 */
+/***************************************************/
+void setup() {
+    nh.initNode();              // Initialize ros node
+    nh.subscribe(sub);          // arduino node subscribes to topic declared
+    nh.advertise(pub);          // advertise the topic 
+    // pinMode(40, OUTPUT);     // LED Debugging purposes
+    init_actuators();           // initialiaze all motors
+    //init_I2C();               // initialize I2C bus as master
+    start_time = millis();      // Start timer
 }
 
-/***************************/
-/* END MAIN LOOP
-  /***************************/
+/***************************************************/
+/*                                                 */
+/*                      MAIN                       */
+/*                                                 */
+/***************************************************/
+void loop() {
+    while (1) {
+        loop_time_duration = millis() - last_recorded_time;
+        if ((millis() - last_recorded_time) >= LOOPTIME) { // stable loop time
+            time_elapsed = (float) (millis() - last_recorded_time);
+            last_recorded_time = millis();
+            compute_sensed_motor_velocities(); // read encoders
+            send_serial(); // Send the current state via ROS
+            check_for_test_execution(); // takes care of drive demo test commands
+            if (use_dif_drive) {
+                // NOTE: Differential drive is broken currently-
+                // giving T command, the whole body moves instead of the turret 
+                // TODO: Fix isolated differential drive
+                differential_drive();
+            } else if (use_holonomic_drive) {
+                holonomic_drive();
+            }
+            set_speed_of_motors();
+        }
+
+        //analogWrite(MT_PWM_PIN, 50);
+
+        // update_prevs();
+        //
+        //    if (next_sensor_time < micros() && is_imu_working()) {
+        //      unsigned long current_micros = micros();
+        //
+        //      compute_imu((current_micros - prev_micros) / 1000000.0); //update imu with time change
+        //
+        //      sensed_drive_angle = get_current_angle() * PI / 180;
+        //
+        //      next_sensor_time = micros() + SENSOR_LOOPTIME;
+        //      prev_micros = current_micros;
+        //
+        //      // potentially combine hamr_loc.theta with imu angle?
+        //    } else if (!is_imu_working()) {
+        //      sensed_drive_angle = hamr_loc.theta;
+        //    }
+
+        float ticks = TICKS_PER_REV_TURRET;
+        sensed_drive_angle = fmod(decoder_turret_total, ticks) / (float) ticks;
+        if (sensed_drive_angle < 0) {
+            sensed_drive_angle = 1 + sensed_drive_angle;
+        } 
+        if (!didSetOffset) {
+            offset = sensed_drive_angle;
+            didSetOffset = true;
+        }
+        sensed_drive_angle = sensed_drive_angle - offset;
+    }
+}
+
+/************************/
+/*   Driving Functions  */
+/************************/
+void differential_drive() {
+    // takes care of differential drive
+    int use_dd_control = 1;
+    if (use_dd_control == 0) {
+        // PID velocity control, same input to both motors
+        desired_M1_v = desired_dd_v;
+        desired_M2_v = desired_dd_v;
+    } else if (use_dd_control == 1) {
+        // Differential drive control
+        angle_control(&dd_ctrl, desired_dd_r, hamr_loc.w, &dtheta_cmd, desired_dd_v, &desired_M1_v, &desired_M2_v, WHEEL_DIST, WHEEL_RADIUS, time_elapsed);
+    } else {
+        // use indiv setpoints
+        desired_M1_v = (desired_dd_v - (WHEEL_DIST/2.0) * PI/2.0);
+        desired_M2_v = (desired_dd_v + (WHEEL_DIST/2.0) * PI/2.0);
+    }
+}
+
+void holonomic_drive() {
+    // Takes care of holonomic drive
+    // Gets the current x, y, and t dot then uses those values to calculate
+    // jacobian and adjusts the motors.
+    compute_global_state(-1 * sensed_M1_v, 
+                        sensed_M2_v,
+                        sensed_MT_v,
+                        2*PI*sensed_drive_angle,
+                        &computed_xdot,
+                        &computed_ydot,
+                        &computed_tdot);
+    h_xdot_cmd = desired_h_xdot;
+    h_ydot_cmd = desired_h_ydot;
+    h_rdot_cmd = desired_h_rdot;
+
+        // UNCOMMENT THE FOLLOWING LINE TO ENABLE HOLONOMIC PID
+    // h_xdot_cmd = pid_vars_h_xdot.update_pid(desired_h_xdot, computed_xdot, time_elapsed);
+    // h_ydot_cmd = pid_vars_h_ydot.update_pid(desired_h_ydot, computed_ydot, time_elapsed);
+    // h_rdot_cmd = pid_vars_h_rdot.update_pid(desired_h_rdot, computed_tdot * 180 / PI, time_elapsed);
+
+    // using output of holonomic PID, compute jacobian values for motor inputs
+    set_holonomic_desired_velocities(h_xdot_cmd, h_ydot_cmd, h_rdot_cmd); // set these setpoints to the output of the holonomic PID controllers
+    get_holonomic_motor_velocities(sensed_drive_angle * 2 * PI, &desired_M1_v, &desired_M2_v, &desired_MT_v);
+    // get_holonomic_motor_velocities(hamr_loc.theta, &desired_M1_v, &desired_M2_v, &desired_MT_v);
+}
+
+void set_speed_of_motors() {
+    // sets the speed of all three of the motors
+    set_speed(&pid_vars_M1,
+            desired_M1_v,
+            sensed_M1_v,
+            &M1_v_cmd,
+            time_elapsed,
+            &pwm_M1,
+            M1_DIR_PIN,
+            M1_PWM_PIN,
+            &dummy1);
+
+    set_speed(&pid_vars_M2,
+            desired_M2_v,
+            sensed_M2_v,
+            &M2_v_cmd,
+            time_elapsed,
+            &pwm_M2,
+            M2_DIR_PIN,
+            M2_PWM_PIN,
+            &dummy2);
+
+    set_speed_of_turret(&pid_vars_MT,
+                        desired_MT_v,
+                        sensed_MT_v,
+                        &MT_v_cmd,
+                        time_elapsed,
+                        &pwm_MT,
+                        MT_DIR_PIN,
+                        MT_PWM_PIN,
+                        &pidError);
+}
 
 /******************************************/
 /* BEGIN SERIAL COMMUNCIATION CODE
   /******************************************/
-
-/* read a byte from Serial. Perform appropriate action based on byte*/
 
 // NOTE: this is going to be the callback
 void commandCallback(const hamr_test::HamrCommand& command_msg) {
@@ -606,10 +491,10 @@ void commandCallback(const hamr_test::HamrCommand& command_msg) {
         break;
       // Tests on command
       case -100:
-        squareTestDidStart = true;
+        square_test_did_start = true;
         break;
       case -101:
-        rightTestDidStart = true;
+        right_test_did_start = true;
         break;
     }
       *sig_var = val.toFloat();
@@ -648,26 +533,25 @@ void send_serial() {
 //    hamrStatus.looptime = loop_time_duration;
 //    pub.publish(&hamrStatus);
 
-    holoStatus.setpoint_x =  (int)(h_xdot_cmd * 1000);
-    holoStatus.setpoint_y = (int)(h_ydot_cmd * 1000);
-    holoStatus.setpoint_r = (int)(h_rdot_cmd * 1000);
-    holoStatus.xdot = (int)(computed_xdot*1000);
-    holoStatus.ydot = (int)(computed_ydot*1000);
-    holoStatus.tdot = (int)(computed_tdot*100);
-    holoStatus.left_vel = (int)(sensed_M2_v * 1000);
-    holoStatus.right_vel = (int)(sensed_M1_v * 1000);
-    holoStatus.turret_vel = (int)(sensed_MT_v * 100);
-    holoStatus.desired_left_vel = (int) (desired_M2_v * 1000);
-    holoStatus.desired_right_vel = (int) (desired_M1_v * 1000);
-    holoStatus.desired_turret_vel = (int) (desired_MT_v * 100);
-    holoStatus.sensed_drive_angle = (int)(sensed_drive_angle*360);
-    pub.publish(&holoStatus);
+//    holoStatus.setpoint_x =  (int)(h_xdot_cmd * 1000);
+//    holoStatus.setpoint_y = (int)(h_ydot_cmd * 1000);
+//    holoStatus.setpoint_r = (int)(h_rdot_cmd * 1000);
+//    holoStatus.xdot = (int)(computed_xdot*1000);
+//    holoStatus.ydot = (int)(computed_ydot*1000);
+//    holoStatus.tdot = (int)(computed_tdot*100);
+//    holoStatus.left_vel = (int)(sensed_M2_v * 1000);
+//    holoStatus.right_vel = (int)(sensed_M1_v * 1000);
+//    holoStatus.turret_vel = (int)(sensed_MT_v * 100);
+//    holoStatus.desired_left_vel = (int) (desired_M2_v * 1000);
+//    holoStatus.desired_right_vel = (int) (desired_M1_v * 1000);
+//    holoStatus.desired_turret_vel = (int) (desired_MT_v * 100);
+//    holoStatus.sensed_drive_angle = (int)(sensed_drive_angle*360);
+//    pub.publish(&holoStatus);
 
 
     // turret velocity debugging things
 //    velStatus.sensed_t_motor_enc_value = decoder_count_MT;
-//    velStatus.sensed_t_motor_velocity = (int) (((float(turret_tick_change)/1023))/(time_elapsed
-  /1000) * 1000);
+//    velStatus.sensed_t_motor_velocity = (int) (((float(turret_tick_change)/1023))/(time_elapsed/1000) * 1000);
 //    velStatus.sensed_turret_position = (int) (360 * sensed_drive_angle);
 //    velStatus.sensed_turret_velocity = (int) (sensed_MT_v * 100);
 //    velStatus.desired_turret_velocity = (int) (desired_MT_v * 100);
@@ -814,8 +698,7 @@ void compute_sensed_motor_velocities() {
 //  float decoder_count_change_filt_MT = compute_avg(decoder_count_arr_MT, AVG_FILT_SZ);
 
   // compute robot velocities
-//  sensed_M1_v = get_speed(decoder_count_change_filt_M1, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed
-);
+//  sensed_M1_v = get_speed(decoder_count_change_filt_M1, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed);
 //  sensed_M2_v = get_speed(decoder_count_change_filt_M2, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed);
 //  sensed_MT_v = get_speed(decoder_count_change_filt_MT, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed);
 //  sensed_MT_v = get_ang_speed(decoder_count_change_filt_MT, TICKS_PER_REV_TURRET, time_elapsed);
@@ -1015,4 +898,99 @@ int adjust_speed(int pwm, int desired) {
     pwm++;
   }
   return pwm;
+}
+
+/***************************************************/
+/*                                                 */
+/*              Holonomic Drive Tests              */
+/*                                                 */
+/***************************************************/
+void check_for_test_execution() {
+  // checks if the HAMR should start to execute any tests
+    if (square_test_did_start) {
+        square_vid_test();
+        if (!timer_set) {
+            start_test_time = millis();
+            timer_set = true;
+        }  
+    } else if (right_test_did_start) {
+        right_angle_vid_test();
+        if (!timer_set) {
+            start_test_time = millis();
+            timer_set = true;
+        }
+    }
+}
+
+/*SQUARE VIDEO TEST*/
+void square_vid_test() {
+    if (millis() < start_test_time + 5000) {
+        desired_h_xdot = 0.0;
+        desired_h_ydot = 0.0;
+    }
+    else if(millis() < start_test_time + 10000){
+        desired_h_xdot = -.2;
+        desired_h_ydot = 0;
+    } else if(millis() < start_test_time + 15000){
+        desired_h_xdot = 0;
+        desired_h_ydot = -.2;
+    } else if(millis() < start_test_time + 20000){
+        desired_h_xdot = .2;
+        desired_h_ydot = 0;
+    } else if(millis() < start_test_time + 25000){
+        desired_h_xdot = 0;
+        desired_h_ydot = .2;
+    } else {
+        square_test_did_start = false;
+        timer_set = false;
+        desired_h_xdot = 0;
+        desired_h_ydot = 0;
+    }
+}
+
+/*RIGHT ANGLE VIDEO TEST*/
+void right_angle_vid_test() {
+    if(millis() < start_test_time + 6000){
+        desired_h_xdot = 0;
+        desired_h_ydot = .2;
+    } else if(millis() < start_test_time + 12000){
+        desired_h_xdot = -.2;
+        desired_h_ydot = 0;
+    } else {
+        desired_h_xdot = 0;
+        desired_h_ydot = 0;
+        right_test_did_start = false;
+        timer_set = false;
+    }
+}
+
+void zipper_path() {
+    if(millis() < start_time + 4000){
+      desired_h_xdot = .2;
+      desired_h_ydot = 0;
+    } else if(millis() < start_time + 8000){
+      desired_h_xdot = 0;
+      desired_h_ydot = .2;
+    } else if(millis() < start_time + 12000){
+      desired_h_xdot = -.2;
+      desired_h_ydot = 0;
+    } else if(millis() < start_time + 16000){
+      desired_h_xdot = 0;
+      desired_h_ydot = .2;
+    } else if(millis() < start_time + 20000){
+      desired_h_xdot = .2;
+      desired_h_ydot = 0;
+    } else if(millis() < start_time + 24000){
+      desired_h_xdot = 0;
+      desired_h_ydot = .2;
+    } else if(millis() < start_time + 28000){
+      desired_h_xdot = -.2;
+      desired_h_ydot = 0;
+    } else if(millis() < start_time + 32000){
+      desired_h_xdot = 0;
+      desired_h_ydot = .2;
+    }else {
+      desired_h_xdot = 0.0;
+      desired_h_ydot = 0.0;
+    }
 }
