@@ -8,7 +8,7 @@
 #include "dd_control.h"
 #include "constants.h"
 #include "holonomic_control.h"
-#include <Wire.h> // I2C Communication, 
+#include <Wire.h> // I2C 
 #include <libas.h> // SSI Communication
 
 /*******************************/
@@ -707,38 +707,10 @@ float calculate_decoder_count_change(
     }
 }
 
-
-/*
-  Testing functions
-*/
-int increment = 1;
-int pwm = 0;
-void test_motors() {
-
-  pwm += increment;
-  if (pwm > 30) {
-    increment = -1;
-  } else if (pwm < 1) {
-    increment = 1;
-    digitalWrite(M1_DIR_PIN, LOW);
-    digitalWrite(M2_DIR_PIN, HIGH);
-    //    digitalWrite(MT_DIR_PIN, LOW);
-  }
-
-  analogWrite(M1_PWM_PIN, pwm);
-  analogWrite(M2_PWM_PIN, pwm);
-  //  analogWrite(MT_PWM_PIN, pwm);
-
-  Serial.print("M1_PWM_PIN: "); Serial.println(M1_PWM_PIN);
-  Serial.print("M2_PWM_PIN: "); Serial.println(M2_PWM_PIN);
-  //  Serial.print("MT_PWM_PIN: "); Serial.println(MT_PWM_PIN);
-  Serial.print("pwm: "); Serial.println(pwm);
-  delay(50);
-}
-
-/******************************************/
-/* BEGIN I2C CODE
-  /******************************************/
+/******************/
+/*    I2C Code    */
+/******************/
+// Hamr V3 does not have I2C implementation yet. 
 void init_I2C() {
   Wire.begin();
 }
@@ -771,61 +743,6 @@ void test_I2C_decoder_count() {
   delayMicroseconds(10000);
 }
 
-/******************************************/
-/* END I2C CODE
-  /******************************************/
-
-
-/* TEST FUNCTION. INSERT ALL TESTING IN HERE. make sure to comment these out while not testing, otherwise infinite loop */
-void read_serial();
-
-void test() {
-  delayMicroseconds(1000000);
-
-  while (0) {
-    test_ADA();
-    read_serial();
-  }
-  while (1) {
-    test_motors();
-  }
-
-  //  while(1){
-  //    test_I2C_decoder_count();
-  //  }
-}
-
-
-void test_ADA() {
-  pwm_M1 = adjust_speed(pwm_M1, desired_M1_v);
-  pwm_M2 = adjust_speed(pwm_M2, desired_M2_v);
-  pwm_MT = adjust_speed(pwm_MT, desired_MT_v);
-
-  analogWrite(M1_PWM_PIN, pwm_M1);
-  analogWrite(M2_PWM_PIN, pwm_M2);
-  analogWrite(MT_PWM_PIN, pwm_MT);
-
-  digitalWrite(M1_DIR_PIN, (desired_M1_v >= 0) ? M1_FORWARD : !M1_FORWARD);
-  digitalWrite(M2_DIR_PIN, (desired_M2_v >= 0) ? M2_FORWARD : !M2_FORWARD);
-  digitalWrite(MT_DIR_PIN, (desired_MT_v >= 0) ? MT_COUNTER : !MT_COUNTER);
-
-
-  Serial.print("pwm_M1: "); Serial.println(pwm_M1);
-  Serial.print("pwm_M2: "); Serial.println(pwm_M2);
-  Serial.print("pwm_MT: "); Serial.println(pwm_MT);
-  Serial.print("pwm: "); Serial.println(pwm);
-  delay(10);
-}
-
-int adjust_speed(int pwm, int desired) {
-  if (pwm > abs(desired)) {
-    pwm = abs(desired);
-  } else if (pwm < abs(desired)) {
-    pwm++;
-  }
-  return pwm;
-}
-
 /***************************************************/
 /*                                                 */
 /*              Holonomic Drive Tests              */
@@ -846,6 +763,32 @@ void check_for_test_execution() {
             timer_set = true;
         }
     }
+}
+
+int increment = 1;
+int pwm = 0;
+void test_motors() {
+    // We have never used this function before.
+    // I left it in just in case
+    pwm += increment;
+    if (pwm > 30) {
+        increment = -1;
+    } else if (pwm < 1) {
+        increment = 1;
+        digitalWrite(M1_DIR_PIN, LOW);
+        digitalWrite(M2_DIR_PIN, HIGH);
+        //    digitalWrite(MT_DIR_PIN, LOW);
+    }
+
+    analogWrite(M1_PWM_PIN, pwm);
+    analogWrite(M2_PWM_PIN, pwm);
+    //  analogWrite(MT_PWM_PIN, pwm);
+
+    Serial.print("M1_PWM_PIN: "); Serial.println(M1_PWM_PIN);
+    Serial.print("M2_PWM_PIN: "); Serial.println(M2_PWM_PIN);
+    //  Serial.print("MT_PWM_PIN: "); Serial.println(MT_PWM_PIN);
+    Serial.print("pwm: "); Serial.println(pwm);
+    delay(50);
 }
 
 /*SQUARE VIDEO TEST*/
@@ -915,8 +858,39 @@ void zipper_path() {
     } else if(millis() < start_time + 32000){
       desired_h_xdot = 0;
       desired_h_ydot = .2;
-    }else {
+    } else {
       desired_h_xdot = 0.0;
       desired_h_ydot = 0.0;
     }
+}
+
+void test_ADA() {
+    // We've never used this function either
+    pwm_M1 = adjust_speed(pwm_M1, desired_M1_v);
+    pwm_M2 = adjust_speed(pwm_M2, desired_M2_v);
+    pwm_MT = adjust_speed(pwm_MT, desired_MT_v);
+
+    analogWrite(M1_PWM_PIN, pwm_M1);
+    analogWrite(M2_PWM_PIN, pwm_M2);
+    analogWrite(MT_PWM_PIN, pwm_MT);
+
+    digitalWrite(M1_DIR_PIN, (desired_M1_v >= 0) ? M1_FORWARD : !M1_FORWARD);
+    digitalWrite(M2_DIR_PIN, (desired_M2_v >= 0) ? M2_FORWARD : !M2_FORWARD);
+    digitalWrite(MT_DIR_PIN, (desired_MT_v >= 0) ? MT_COUNTER : !MT_COUNTER);
+
+
+    Serial.print("pwm_M1: "); Serial.println(pwm_M1);
+    Serial.print("pwm_M2: "); Serial.println(pwm_M2);
+    Serial.print("pwm_MT: "); Serial.println(pwm_MT);
+    Serial.print("pwm: "); Serial.println(pwm);
+    delay(10);
+}
+
+int adjust_speed(int pwm, int desired) {
+    if (pwm > abs(desired)) {
+        pwm = abs(desired);
+    } else if (pwm < abs(desired)) {
+        pwm++;
+    }
+    return pwm;
 }
