@@ -27,20 +27,11 @@ void set_speed_of_turret(PID_Vars* pid,
                int pin_driver_dir,
                int pin_pwm,
                float* pidError);
-               
-float get_speed(long encoder_counts,
-                float ticks_per_rev, 
-                float dist_per_rev, 
-                float time_elapsed);
 
 float get_speed_from_difference(long difference,
                 float ticks_per_rev, 
                 float dist_per_rev, 
                 float time_elapsed);
-               
-float get_ang_speed(long encoder_counts,
-                    float ticks_per_rev,
-                    float time_elapsed);
 
 float get_ang_speed_from_difference(long difference,
                     float ticks_per_rev,

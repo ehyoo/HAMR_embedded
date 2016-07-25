@@ -1,4 +1,10 @@
+// motor.cpp
+// deals with setting speed of motors as well as calculating speed from 
+// encoder readings
 
+// For debugging purposes, if you need to override the PID control and just do
+// direct velocity control via voltage, comment lines labeled 1 and 2 in 
+// set_speed and set_speed_of_turret and uncomment lines 3. 
 #include "motor.h"
 #include "Arduino.h"
 #include "constants.h"
@@ -9,7 +15,6 @@ void set_direction(int pin_driver_dir, bool dir) {
   digitalWrite(pin_driver_dir, dir);
 }
 
-// Sets direction and Arduino PWM to desired speed
 void set_speed(PID_Vars* pid,
                float speed_req, 
                float speed_act,
@@ -19,143 +24,80 @@ void set_speed(PID_Vars* pid,
                int pin_driver_dir, 
                int pin_pwm, 
                float* pidError) {
+    // Sets the direction and Arduino PWM of M1 and M2 to desired speed
+    *speed_cmd = pid->update_pid(speed_req, speed_act, t_elapsed); // 1
+    *pidError = speed_req - speed_act;
+    // *pwm_val = round((speed_req)*255.0); //3
+    *pwm_val = round((*speed_cmd)*255.0); // 2
+    *pwm_val = constrain(*pwm_val, -255, 255); // limit PWM values
 
-  // increment speed_cmd with PID output (velocity control outputs change in speed)
-  // float pid_output = pid->update_pid(speed_req, speed_act, t_elapsed);
-  // *pwm_val = *pwm_val + round(255.0 * pid_output);
-  // *pwm_val = constrain(*pwm_val, -255, 255); // limit PWM values
-  
-  //THIS
-  // was +=
-  *speed_cmd = pid->update_pid(speed_req, speed_act, t_elapsed);
-  *pidError = speed_req - speed_act;
-  
-  // *pwm_val = round((speed_req)*255.0);
-  
-  
-  
-  // AND THIS
-  *pwm_val = round((*speed_cmd)*255.0);
-  *pwm_val = constrain(*pwm_val, -255, 255); // limit PWM values
+    if (abs(*pwm_val) < 5) {
+        // Deadband to help with nosie from encoders
+        *pwm_val = 0.0;
+    }
 
-   if (abs(*pwm_val) < 5) {
-     *pwm_val = 0.0;
-   }
-  
-  if (*pwm_val < 0) {
-    // reverse direction
-    set_direction(pin_driver_dir, !M1_FORWARD);
-  } else {
-    // forward direction
-    set_direction(pin_driver_dir, M1_FORWARD);
-  }
-  analogWrite(pin_pwm, abs(*pwm_val));
+    if (*pwm_val < 0) {
+        // reverse direction
+        set_direction(pin_driver_dir, !M1_FORWARD);
+    } else {
+        // forward direction
+        set_direction(pin_driver_dir, M1_FORWARD);
+    }
+    analogWrite(pin_pwm, abs(*pwm_val));
 } 
-
-
-// THIS IS A MODIFIED VERSION OF THE CODE ABOVE.
 
 void set_speed_of_turret(PID_Vars* pid,
-               float speed_req, 
-               float speed_act,
-               float* speed_cmd,
-               float t_elapsed,
-               int* pwm_val,
-               int pin_driver_dir, 
-               int pin_pwm, 
-               float* pidError) {
+                        float speed_req, 
+                        float speed_act,
+                        float* speed_cmd,
+                        float t_elapsed,
+                        int* pwm_val,
+                        int pin_driver_dir, 
+                        int pin_pwm, 
+                        float* pidError) {
+    // Sets speed of turret
+    // Only thing that's different between the above function and this is the 
+    // -1 in *speed_cmd, which is to take into consideration the differing
+    // directions of the motor controlling the turret and the turret itself.
+    *speed_cmd = -1 * pid->update_pid(speed_req, speed_act, t_elapsed); // 1
+    *pidError = speed_req - speed_act;
+    // *pwm_val = round((speed_req)*255.0); // 3
+    *pwm_val = round((*speed_cmd)*255.0); //2
+    *pwm_val = constrain(*pwm_val, -255, 255); // limit PWM values
 
-  // increment speed_cmd with PID output (velocity control outputs change in speed)
-  // float pid_output = pid->update_pid(speed_req, speed_act, t_elapsed);
-  // *pwm_val = *pwm_val + round(255.0 * pid_output);
-  // *pwm_val = constrain(*pwm_val, -255, 255); // limit PWM values
-  
-  //THIS
-  // was +=
-  *speed_cmd = -1*pid->update_pid(speed_req, speed_act, t_elapsed);
-  *pidError = speed_req - speed_act;
-  
-  // *pwm_val = round((speed_req)*255.0);
-  // AND THIS
-  *pwm_val = round((*speed_cmd)*255.0);
-  *pwm_val = constrain(*pwm_val, -255, 255); // limit PWM values
-
-   if (abs(*pwm_val) < 5) {
+    if (abs(*pwm_val) < 5) {
+    // Deadband
      *pwm_val = 0.0;
-   }
+    }
   
-  if (*pwm_val < 0) {
-    // reverse direction
-    set_direction(pin_driver_dir, !M1_FORWARD);
-  } else {
-    // forward direction
-    set_direction(pin_driver_dir, M1_FORWARD);
-  }
-  analogWrite(pin_pwm, abs(*pwm_val));
+    if (*pwm_val < 0) {
+        // reverse direction
+        set_direction(pin_driver_dir, !M1_FORWARD);
+    } else {
+        // forward direction
+        set_direction(pin_driver_dir, M1_FORWARD);
+    }
+    analogWrite(pin_pwm, abs(*pwm_val));
 } 
 
-/*
- * Calculates speed from encoder counts over time
- * 
- * curr_count, prev_count: current and previous encoder counts
- * ticks_per_rev: number of encoder counts per revolution
- * dist_per_rev: circumference of wheel
- * time_elapsed: time in ms
- */
-float get_speed(long encoder_counts,
-                float ticks_per_rev, 
-                float dist_per_rev, 
-                float time_elapsed) {
-  // Calculating the speed using encoder count
-  /*Serial.print(encoder_counts);
-  Serial.print(time_elapsed,2);
-  Serial.print(ticks_per_rev,2);
-  Serial.print(dist_per_rev,2);*/
-
-  // if big number > 4000, and small number is <100, then do this:
-
-  // otherwise do the original
-
-  return ((((float) encoder_counts) / ticks_per_rev) * dist_per_rev) / (time_elapsed / 1000.0);
-}
 
 float get_speed_from_difference(long difference,
-                float ticks_per_rev, 
-                float dist_per_rev, 
-                float time_elapsed) {
-  // Calculating the speed using encoder count
-  /*Serial.print(encoder_counts);
-  Serial.print(time_elapsed,2);
-  Serial.print(ticks_per_rev,2);
-  Serial.print(dist_per_rev,2);*/
-
-  // if big number > 4000, and small number is <100, then do this:
-
-  // otherwise do the original
-
-  return ((((float) difference) / ticks_per_rev) * dist_per_rev) / (time_elapsed / 1000.0);
+                                float ticks_per_rev, 
+                                float dist_per_rev, 
+                                float time_elapsed) {
+    // Calculates speed from encoder counts
+    // difference: difference between previous and current encoder counts
+    // ticks_per_rev: number of encoder counts per revolution
+    // time_elapsed: time in milliseconds
+    return ((((float) difference) / ticks_per_rev) * dist_per_rev) / (time_elapsed / 1000.0);
 }
 
-
-
-
-/*
- * Calculates angular speed from encoder counts over time
- * 
- * encoder_counts: encoder counts over the time period time_elapsed
- * ticks_per_rev: number of encoder counts per revolution
- * time_elapsed: time in ms
- */
-float get_ang_speed(long encoder_counts,
-                    float ticks_per_rev,
-                    float time_elapsed) {
-  // Getting turret: -1 because spinning opposite direction of encoder.
-  return 1 * 360 * (((float) encoder_counts) / ticks_per_rev) / (time_elapsed / 1000.0);}
-
-  float get_ang_speed_from_difference(long difference,
-                    float ticks_per_rev,
-                    float time_elapsed) {
-  return -1 * 360 * (((float) difference) / ticks_per_rev) / (time_elapsed / 1000.0);
-  
-  
-  }
+float get_ang_speed_from_difference(long difference,
+                  float ticks_per_rev,
+                  float time_elapsed) {
+    // Calculates angular speed of encoder in degrees/s
+    // difference: difference between prev and current encoder counts
+    // ticks_per_rev: number of encoder counts per revolution
+    // time_elapsed: time in milliseconds
+    return -1 * 360 * (((float) difference) / ticks_per_rev) / (time_elapsed / 1000.0);
+}

@@ -1,3 +1,11 @@
+/***********************************/
+/*                                 */
+/*        HAMR_embedded.ino        */
+/* Version 3 of HAMR embedded code */
+/*             MODLAB              */
+/*                                 */
+/***********************************/
+// Notes:
 // M1 => RIGHT MOTOR
 // M2 => LEFT MOTOR
 // MT => TURRET MOTOR
