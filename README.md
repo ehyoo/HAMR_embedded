@@ -7,16 +7,7 @@
 ----  
 MODLAB, CRI Project (as of 3.0)
 ----
-(Versions 1.0~2.0)
-Senior design project, 2015-2016, University of Pennsylvania
-
-Tighe Costa
-
-Golam Kibria
-
-John Kim
-
-Christian Wang
+Refactored and updated version of the [original HAMR implementation](https://github.com/wangchr/HAMR)
 
 ## Instructions
 The MPU6050 and I2Cdev library folders must be copied to the local Arduino
