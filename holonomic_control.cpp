@@ -3,11 +3,6 @@
 #include "Arduino.h"
 #include "constants.h"
 
-//remember to define these correctly
-// #define DIM_A 1
-// #define DIM_B 1
-// #define DIM_R 1
-
 #define DIM_A 0.165
 #define DIM_B 0.165
 #define DIM_R WHEEL_RADIUS
@@ -17,31 +12,34 @@ float max_linear_acceleration = .1;
 float max_angular_acceleration = .1;
 
 // desired user velocities
-float setpoint_x = 0;  float setpoint_y = 0;  float setpoint_r = 0; 
+float setpoint_x = 0;
+float setpoint_y = 0;
+float setpoint_r = 0;
 
 /* last known state (updated by update_holonomic_state()) */
-// Why is state_x and state_y not being used, but state_theta_d is????
-float state_xdot = 0; float state_ydot = 0; float sensed_theta_d = 0; //theta_d is the angle of the drive relative to turret
+float state_xdot = 0;
+float state_ydot = 0;
+float sensed_theta_d = 0; //theta_d is the angle of the drive relative to turret
 
-/*
-Actual velocities input into Jacobian. 
-These depend on the set_point and max_linear_acceleration
-*/
-// These variables actually don't do anaything besides gettign reassigned to their respective setpoints
-// I'm keeping these for now but they will be deleted later
-float desired_x = 0;  float desired_y = 0;  float desired_r = 0;
 
-/*
-last set of velocities output from jacobian 
-*/
-float output_m1 = 0; float output_m2 = 0; float output_mt = 0;
+// Actual velocities input into Jacobian. 
+// These depend on the set_point and max_linear_acceleration
+float desired_x = 0;
+float desired_y = 0;
+float desired_r = 0;
 
-/* 
-Update holonomic actuator velocities with given current known state. 
-Return the computed output in the output pointers
-*/
-void get_holonomic_motor_velocities(float _state_theta_dheta_d, float* _output_m1, float* _output_m2, float* _output_mt) {
-  // hamr_loc.theta, &desired_M1_v, &desired_M2_v, &desired_MT_v 
+//last set of velocities output from jacobian 
+float output_m1 = 0;
+float output_m2 = 0;
+float output_mt = 0;
+
+ 
+// Update holonomic actuator velocities with given current known state. 
+// Return the computed output in the output pointers
+void get_holonomic_motor_velocities(float _state_theta_dheta_d, 
+									float* _output_m1, 
+									float* _output_m2,
+									float* _output_mt) {
 	sensed_theta_d = _state_theta_dheta_d;
 
 	desired_x = setpoint_x;
@@ -57,17 +55,22 @@ void get_holonomic_motor_velocities(float _state_theta_dheta_d, float* _output_m
 	* _output_mt = output_mt;
 }
 
-void compute_global_state(float sensed_m1, float sensed_m2, float sensed_mt, float sensed_t,
-                          float* xdot, float* ydot, float* tdot){
+void compute_global_state(float sensed_m1, 
+						float sensed_m2,
+						float sensed_mt,
+						float sensed_t,
+						float* xdot,
+						float* ydot,
+						float* tdot){
+	// Computes the current x, y, and t dot from given information
 	float sint, cost;
 	float b_s, b_c, a_s, a_c; //intermediate calculations
 	float rac, rbc, ras, rbs;
 
-  float converted_m1 = sensed_m1/WHEEL_RADIUS;
-  float converted_m2 = sensed_m2/WHEEL_RADIUS;
-  float converted_mt = sensed_mt * (PI/180);
+	float converted_m1 = sensed_m1/WHEEL_RADIUS;
+	float converted_m2 = sensed_m2/WHEEL_RADIUS;
+	float converted_mt = sensed_mt * (PI/180);
  
-
 	sint = sin(sensed_t);
 	cost = cos(sensed_t);
 
@@ -81,16 +84,19 @@ void compute_global_state(float sensed_m1, float sensed_m2, float sensed_mt, flo
 	ras = DIM_R * a_s;
 	rbs = DIM_R * b_s;
 
-  // these pointers are: computed_xdot, computed_ydot and computed_tdot
+	// these pointers are: computed_xdot, computed_ydot and computed_tdot
 	*xdot = ((-rbc - ras)*converted_m1 + (rbc - ras) * converted_m2) / (2.0 * DIM_A);
 	*ydot = ((-rbs + rac)*converted_m1 + (rbs + rac) * converted_m2) / (2.0 * DIM_A);
 	*tdot = (DIM_R * converted_m1 - DIM_R * converted_m2 )/ (2.0 * DIM_A) - converted_mt;
 }
 
-/* 
-Helper Function for update_holonomic_state()
-compute the jacobian with the given inputs*/
-void compute_ramsis_jacobian(float desired_xdot, float desired_ydot, float desired_tdot, float t){
+
+// Helper Function for update_holonomic_state()
+// compute the jacobian with the given inputs
+void compute_ramsis_jacobian(float desired_xdot,
+							float desired_ydot,
+							float desired_tdot,
+							float t){
 	// Computed in radians....
 	float sint, cost;
 	float b_sin, b_cos, a_sin, a_cos; //intermediate calculations
