@@ -41,8 +41,8 @@ ros::Publisher pub("hamr_state", &hamrStatus);
 // ros::Publisher pub("vel_state", &velStatus);
   
 // Subscribing
-void commandCallback(const hamr_test::HamrCommand& command_msg);
-ros::Subscriber<hamr_test::HamrCommand> sub("hamr_command", &commandCallback);
+void command_callback(const hamr_test::HamrCommand& command_msg);
+ros::Subscriber<hamr_test::HamrCommand> sub("hamr_command", &command_callback);
 
 /***************************************************/
 /*                                                 */
@@ -188,15 +188,27 @@ bool timer_set = false;
 /*          Modes          */
 /***************************/
 // Use direct drive by sending false to both dif_drive and holonomic_drive
-bool use_dif_drive = true; // Sending linear velocity commands and turret commands
-bool use_holonomic_drive = false; // Full fledged holonomic drive
+bool use_dif_drive = false; // Sending linear velocity commands and turret commands
+bool use_holonomic_drive = true; // Full fledged holonomic drive
+
+/****************************************/
+/*          Motor Calculations          */
+/****************************************/
+// Previously sensed velocities
+float prev_sensed_velocity_right;
+float prev_sensed_velocity_left;
+float prev_sensed_velocity_turret;
+// Instantiated objects for SSI communication using the libas library
+libas libas_M1(30, 32, 28, 12);
+libas libas_M2(24, 26, 22, 12);
+libas libas_MT(38, 34, 36, 10);
 
 /***********************/
 /*    Miscellaneous    */
 /***********************/
 // Initial angle offset 
 int offset = 0;
-bool didSetOffset = false;
+bool did_set_offset = false;
 
 // dd localization
 location hamr_loc; // This isn't being used right now. 
@@ -228,7 +240,7 @@ void setup() {
 void loop() {
     while (1) {
         loop_time_duration = millis() - last_recorded_time;
-        if ((millis() - last_recorded_time) >= LOOPTIME) { // stable loop time
+        if ((millis() - last_recorded_time) >= LOOPTIME) { // ensures stable loop time
             time_elapsed = (float) (millis() - last_recorded_time);
             last_recorded_time = millis();
             compute_sensed_motor_velocities(); // read encoders
@@ -245,8 +257,10 @@ void loop() {
             set_speed_of_motors();
         }
 
-        //analogWrite(MT_PWM_PIN, 50);
+        /* IMU Code */
+        // Since we don't have an IMU the code remains as it is from the original
 
+        //analogWrite(MT_PWM_PIN, 50);
         // update_prevs();
         //
         //    if (next_sensor_time < micros() && is_imu_working()) {
@@ -263,17 +277,7 @@ void loop() {
         //    } else if (!is_imu_working()) {
         //      sensed_drive_angle = hamr_loc.theta;
         //    }
-
-        float ticks = TICKS_PER_REV_TURRET;
-        sensed_drive_angle = fmod(decoder_turret_total, ticks) / (float) ticks;
-        if (sensed_drive_angle < 0) {
-            sensed_drive_angle = 1 + sensed_drive_angle;
-        } 
-        if (!didSetOffset) {
-            offset = sensed_drive_angle;
-            didSetOffset = true;
-        }
-        sensed_drive_angle = sensed_drive_angle - offset;
+        calculate_sensed_drive_angle();
     }
 }
 
@@ -323,6 +327,22 @@ void holonomic_drive() {
     // get_holonomic_motor_velocities(hamr_loc.theta, &desired_M1_v, &desired_M2_v, &desired_MT_v);
 }
 
+void calculate_sensed_drive_angle() {
+    // Gets the sensed drive angle of the current turret
+    // When the HAMR first begins, it sets the current sensed angle as the
+    // arbitrary 0.
+    float ticks = TICKS_PER_REV_TURRET;
+    sensed_drive_angle = fmod(decoder_turret_total, ticks) / (float) ticks;
+    if (sensed_drive_angle < 0) {
+        sensed_drive_angle = 1 + sensed_drive_angle;
+    } 
+    if (!did_set_offset) {
+        offset = sensed_drive_angle;
+        did_set_offset = true;
+    }
+    sensed_drive_angle = sensed_drive_angle - offset;
+}
+
 void set_speed_of_motors() {
     // sets the speed of all three of the motors
     set_speed(&pid_vars_M1,
@@ -356,182 +376,183 @@ void set_speed_of_motors() {
                         &pidError);
 }
 
-/******************************************/
-/* BEGIN SERIAL COMMUNCIATION CODE
-  /******************************************/
+/***********************/
+/*    ROS Functions    */
+/***********************/
 
-// NOTE: this is going to be the callback
-void commandCallback(const hamr_test::HamrCommand& command_msg) {
-  // the HamrCommand msg is detailed as follows: 
-  // string type (the type that corresponds to the switch cases)
-  // string val (the value of the float)
-  String str;
-  float temp;
-  float* sig_var;
-  char type = static_cast<char>(command_msg.type);
-  String val = command_msg.val;
+void command_callback(const hamr_test::HamrCommand& command_msg) {
+    // called when message is sent to arduino
+    // matches the message type with each case and does its respective routine
+    // More often than not simply reassigning a variable.
 
-  switch (type) {
+    // the HamrCommand msg is detailed as follows:
+    // string type (the type that corresponds to the switch cases)
+    // string val (the value of the float)
+    String str;
+    float temp;
+    float* sig_var;
+    char type = static_cast<char>(command_msg.type);
+    String val = command_msg.val;
+    switch (type) {
       // holonomic inputs
-      case SIG_HOLO_X:
-        sig_var = &desired_h_xdot;
-        break;
+        case SIG_HOLO_X:
+            sig_var = &desired_h_xdot;
+            break;
 
-      case SIG_HOLO_Y:
-        sig_var = &desired_h_ydot;
-        break;
+        case SIG_HOLO_Y:
+            sig_var = &desired_h_ydot;
+            break;
 
-      case SIG_HOLO_R:
-        sig_var = &desired_h_rdot;
-        break;
+        case SIG_HOLO_R:
+            sig_var = &desired_h_rdot;
+            break;
 
       // differential drive inputs
-      case SIG_DD_V:
-        sig_var = &desired_dd_v;
-        break;
+        case SIG_DD_V:
+            sig_var = &desired_dd_v;
+            break;
 
-      case SIG_DD_R:
-        sig_var = &desired_dd_r;
-        break;
+        case SIG_DD_R:
+            sig_var = &desired_dd_r;
+            break;
 
       // motor velocities
-      case SIG_R_MOTOR:
-        sig_var = &desired_M1_v;
-        break;
+        case SIG_R_MOTOR:
+            sig_var = &desired_M1_v;
+            break;
 
-      case SIG_L_MOTOR:
-        sig_var = &desired_M2_v;
-        break;
+        case SIG_L_MOTOR:
+            sig_var = &desired_M2_v;
+            break;
 
-      case SIG_T_MOTOR:
-        sig_var = &desired_MT_v;
-        break;
+        case SIG_T_MOTOR:
+            sig_var = &desired_MT_v;
+            break;
 
       // right motor PID
-      case SIG_R_KP:
-        sig_var = &(pid_vars_M1.Kp);
-        break;
+        case SIG_R_KP:
+            sig_var = &(pid_vars_M1.Kp);
+            break;
 
-      case SIG_R_KI:
-        sig_var = &(pid_vars_M1.Ki);
-        break;
+        case SIG_R_KI:
+            sig_var = &(pid_vars_M1.Ki);
+            break;
 
-      case SIG_R_KD:
-        sig_var = &(pid_vars_M1.Kd);
-        break;
+        case SIG_R_KD:
+            sig_var = &(pid_vars_M1.Kd);
+            break;
 
       // left motor PID
-      case SIG_L_KP:
-        sig_var = &(pid_vars_M2.Kp);
-        break;
+        case SIG_L_KP:
+            sig_var = &(pid_vars_M2.Kp);
+            break;
 
-      case SIG_L_KI:
-        sig_var = &(pid_vars_M2.Ki);
-        break;
+        case SIG_L_KI:
+            sig_var = &(pid_vars_M2.Ki);
+            break;
 
-      case SIG_L_KD:
-        sig_var = &(pid_vars_M2.Kd);
-        break;
+        case SIG_L_KD:
+            sig_var = &(pid_vars_M2.Kd);
+            break;
 
       // turret motor PID
-      case SIG_T_KP:
-//        sig_var = &(pid_vars_MT.Kp);
-         sig_var = &(dd_ctrl.Kp);
+        case SIG_T_KP:
+            // sig_var = &(pid_vars_MT.Kp); 
+            sig_var = &(dd_ctrl.Kp);
         break;
 
-      case SIG_T_KI:
-//        sig_var = &(pid_vars_MT.Ki);
-         sig_var = &(dd_ctrl.Ki);
+        case SIG_T_KI:
+            // sig_var = &(pid_vars_MT.Ki);
+            sig_var = &(dd_ctrl.Ki);
         break;
 
-      case SIG_T_KD:
-//        sig_var = &(pid_vars_MT.Kd);
-         sig_var = &(dd_ctrl.Kd);
-        break;
+        case SIG_T_KD:
+            // sig_var = &(pid_vars_MT.Kd);
+            sig_var = &(dd_ctrl.Kd);
+            break;
 
       // holonomic X PID
-      case SIG_HOLO_X_KP:
-        sig_var = &(pid_vars_h_xdot.Kp);
-        break;
+        case SIG_HOLO_X_KP:
+            sig_var = &(pid_vars_h_xdot.Kp);
+            break;
 
-      case SIG_HOLO_X_KI:
-        sig_var = &(pid_vars_h_xdot.Ki);
-        break;
+        case SIG_HOLO_X_KI:
+            sig_var = &(pid_vars_h_xdot.Ki);
+            break;
 
-      case SIG_HOLO_X_KD:
-        sig_var = &(pid_vars_h_xdot.Kd);
-        break;
+        case SIG_HOLO_X_KD:
+            sig_var = &(pid_vars_h_xdot.Kd);
+            break;
 
       // holonomic Y PID
 
-      case SIG_HOLO_Y_KP:
-        sig_var = &(pid_vars_h_ydot.Kp);
-        break;
+        case SIG_HOLO_Y_KP:
+            sig_var = &(pid_vars_h_ydot.Kp);
+            break;
 
-      case SIG_HOLO_Y_KI:
-        sig_var = &(pid_vars_h_ydot.Ki);
-        break;
+        case SIG_HOLO_Y_KI:
+            sig_var = &(pid_vars_h_ydot.Ki);
+            break;
 
-      case SIG_HOLO_Y_KD:
-        sig_var = &(pid_vars_h_ydot.Kd);
-        break;
+        case SIG_HOLO_Y_KD:
+            sig_var = &(pid_vars_h_ydot.Kd);
+            break;
 
       // holonomic R PID
 
-      case SIG_HOLO_R_KP:
-        sig_var = &(pid_vars_h_rdot.Kp);
-        break;
+        case SIG_HOLO_R_KP:
+            sig_var = &(pid_vars_h_rdot.Kp);
+            break;
 
-      case SIG_HOLO_R_KI:
-        sig_var = &(pid_vars_h_rdot.Ki);
-        break;
+        case SIG_HOLO_R_KI:
+            sig_var = &(pid_vars_h_rdot.Ki);
+            break;
 
-      case SIG_HOLO_R_KD:
-        sig_var = &(pid_vars_h_rdot.Kd);
-        break;
+        case SIG_HOLO_R_KD:
+            sig_var = &(pid_vars_h_rdot.Kd);
+            break;
       // Tests on command
-      case -100:
-        square_test_did_start = true;
-        break;
-      case -101:
-        right_test_did_start = true;
-        break;
+        case -100:
+            // Square Test
+            square_test_did_start = true;
+            break;
+
+        case -101:
+            // Right Angle Test
+            right_test_did_start = true;
+            break;
     }
       *sig_var = val.toFloat();
 }
 
-/* send relevant data through serial
-  Everything in the if statement takes between 1200 and 1300 microseconds
-  uncomment first and last line to test timing */
-
-  int turret_tick_change; // For debugging purposes for sending through serial- you should delete this later
+int turret_tick_change; // For debugging purposes for sending through serial- you should delete this later
   
 void send_serial() {
-//    leftMotor.position = decoder_count_M2;
-//    rightMotor.position = decoder_count_M1;
-//    turretMotor.position = decoder_count_MT;
-//    // Arbitrary 1000 multiplied to ensure that we can send it over as an int. 
-//    // Just think of it as mm/s 
-//    // This should be fixed soon.
-//    leftMotor.velocity = (int)(sensed_M2_v * 1000);
-//    rightMotor.velocity = (int)(sensed_M1_v * 1000);
-//    turretMotor.velocity = (int)(sensed_MT_v * 100);
-//    leftMotor.desired_velocity = (int)(desired_M2_v * 1000);
-//    rightMotor.desired_velocity = (int)(desired_M1_v * 1000);
-//    turretMotor.desired_velocity = (int)(desired_MT_v * 100);
-//    // These should be deleted later- these were put into messages purely for debugging
-//    turretMotor.speed_cmd = (int)(roundf(MT_v_cmd * 100));
-//    leftMotor.speed_cmd = 0;
-//    rightMotor.speed_cmd = 0;
-//    turretMotor.pidError = (int)(roundf(pidError * 100));
-//    leftMotor.pidError = 0;
-//    rightMotor.pidError = 0;
-//    hamrStatus.timestamp = nh.now();
-//    hamrStatus.left_motor = leftMotor;
-//    hamrStatus.right_motor = rightMotor;
-//    hamrStatus.turret_motor = turretMotor;
-//    hamrStatus.looptime = loop_time_duration;
-//    pub.publish(&hamrStatus);
+   leftMotor.position = decoder_count_M2;
+   rightMotor.position = decoder_count_M1;
+   turretMotor.position = decoder_count_MT;
+   // Arbitrary 1000 multiplied to ensure that we can send it over as an int. 
+   // Just think of it as mm/s 
+   // This should be fixed soon.
+   leftMotor.velocity = (int)(sensed_M2_v * 1000);
+   rightMotor.velocity = (int)(sensed_M1_v * 1000);
+   turretMotor.velocity = (int)(sensed_MT_v * 100);
+   leftMotor.desired_velocity = (int)(desired_M2_v * 1000);
+   rightMotor.desired_velocity = (int)(desired_M1_v * 1000);
+   turretMotor.desired_velocity = (int)(desired_MT_v * 100);
+   // These should be deleted later- these were put into messages purely for debugging
+   turretMotor.speed_cmd = (int)(roundf(MT_v_cmd * 100));
+   leftMotor.speed_cmd = 0;
+   rightMotor.speed_cmd = 0;
+   turretMotor.pidError = (int)(roundf(pidError * 100));
+   leftMotor.pidError = 0;
+   rightMotor.pidError = 0;
+   hamrStatus.timestamp = nh.now();
+   hamrStatus.left_motor = leftMotor;
+   hamrStatus.right_motor = rightMotor;
+   hamrStatus.turret_motor = turretMotor;
+   hamrStatus.looptime = loop_time_duration;
+   pub.publish(&hamrStatus);
 
 //    holoStatus.setpoint_x =  (int)(h_xdot_cmd * 1000);
 //    holoStatus.setpoint_y = (int)(h_ydot_cmd * 1000);
@@ -562,219 +583,129 @@ void send_serial() {
     
 }
 
-/******************************************/
-/* END SERIAL COMMUNICATION CODE
-  /******************************************/
-
-
-/******************************************/
-/* BEGIN MOTOR CODE
-  /******************************************/
+/******************************************************/
+/*      Encoder reading and Velocity Calculations     */
+/******************************************************/
 void init_actuators() {
-  // Set DD motor driver pins as outputs
-  pinMode(M1_DIR_PIN, OUTPUT);
-  pinMode(M2_DIR_PIN, OUTPUT);
-  pinMode(MT_DIR_PIN, OUTPUT);
+    // Set DD motor driver pins as outputs
+    pinMode(M1_DIR_PIN, OUTPUT);
+    pinMode(M2_DIR_PIN, OUTPUT);
+    pinMode(MT_DIR_PIN, OUTPUT);
 
-  // Set Motors as forward
-  digitalWrite(M1_DIR_PIN, M1_FORWARD); // LOW is forwards
-  digitalWrite(M2_DIR_PIN, M2_FORWARD); // HIGH is forwards
-  digitalWrite(MT_DIR_PIN, MT_COUNTER); // HIGH is CLOCKWISE (use low for default)
+    // Set Motors as forward
+    digitalWrite(M1_DIR_PIN, M1_FORWARD); // LOW is forwards
+    digitalWrite(M2_DIR_PIN, M2_FORWARD); // HIGH is forwards
+    digitalWrite(MT_DIR_PIN, MT_COUNTER); // HIGH is CLOCKWISE (use low for default)
 
-  // Initialize PWMs to 0
-  analogWrite(M1_PWM_PIN, 0);
-  analogWrite(M2_PWM_PIN, 0);
-  analogWrite(MT_PWM_PIN, 0);
+    // Initialize PWMs to 0
+    analogWrite(M1_PWM_PIN, 0);
+    analogWrite(M2_PWM_PIN, 0);
+    analogWrite(MT_PWM_PIN, 0);
+}
+
+void compute_sensed_motor_velocities() {
+    // Gets the current position, calculates velocity from current and previous
+    
+    // Read encoders via libas 
+    decoder_count_M1 = libas_M1.GetPosition();
+    decoder_count_M2 = libas_M2.GetPosition();
+    decoder_count_MT = libas_MT.GetPosition();
+
+    // Calculating the difference between prev and current sensed positions
+    float decoder_count_change_M1 = calculate_decoder_count_change(decoder_count_M1_prev, decoder_count_M1, 4095, 500, 3500);
+    float decoder_count_change_M2 = calculate_decoder_count_change(decoder_count_M2_prev, decoder_count_M2, 4095, 500, 3500);
+    float decoder_count_change_MT = calculate_decoder_count_change(decoder_count_MT_prev, decoder_count_MT, 1023, 300, 700);
+
+    // Puts change into the total so we know the drive angle of turret
+    decoder_turret_total -= decoder_count_change_MT;
+    // turret_tick_change = decoder_count_change_MT; // For debugging purposes, see send_serial above
+
+    decoder_count_M1_prev = decoder_count_M1;
+    decoder_count_M2_prev = decoder_count_M2;
+    decoder_count_MT_prev = decoder_count_MT;
+
+    // Moving average filter on decoder count differences
+    // Comment this back in if you want this kind of filter
+    // for (int i = 1; i < AVG_FILT_SZ; i++) {
+    //     decoder_count_arr_M1[i] = decoder_count_arr_M1[i - 1];
+    //     decoder_count_arr_M2[i] = decoder_count_arr_M2[i - 1];
+    // }
+    // for (int j = 1; j < 10; j++) {
+    //     decoder_count_arr_MT[j] = decoder_count_arr_MT[j - 1];
+    // }
+    // decoder_count_arr_M1[0] = decoder_count_change_M1;
+    // decoder_count_arr_M2[0] = decoder_count_change_M2;
+    // decoder_count_arr_MT[0] = decoder_count_change_MT;
+    // float decoder_count_change_filt_M1 = compute_avg(decoder_count_arr_M1, AVG_FILT_SZ);
+    // float decoder_count_change_filt_M2 = compute_avg(decoder_count_arr_M2, AVG_FILT_SZ);
+    // float decoder_count_change_filt_MT = compute_avg(decoder_count_arr_MT, AVG_FILT_SZ);
+
+    // // compute robot velocities
+    // sensed_M1_v = get_speed(decoder_count_change_filt_M1, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed);
+    // sensed_M2_v = get_speed(decoder_count_change_filt_M2, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed);
+    // // sensed_MT_v = get_speed(decoder_count_change_filt_MT, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed);
+    // sensed_MT_v = get_ang_speed(decoder_count_change_filt_MT, TICKS_PER_REV_TURRET, time_elapsed);
+
+    // Get current velocities from differences
+    float current_vel_right = get_speed_from_difference(decoder_count_change_M1, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed);
+    float current_vel_left = get_speed_from_difference(decoder_count_change_M2, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed);
+    float current_vel_turret = get_ang_speed_from_difference(decoder_count_change_MT, TICKS_PER_REV_TURRET, time_elapsed);
+    // Then pass velocities to filter to get 'true' velocity
+    // M1 and M2 returns m/s
+    // MT returns degrees/s
+    sensed_M1_v = low_pass_velocity_filter(current_vel_right, prev_sensed_velocity_right);
+    sensed_M2_v = low_pass_velocity_filter(current_vel_left, prev_sensed_velocity_left);
+    sensed_MT_v = low_pass_velocity_filter(current_vel_turret, prev_sensed_velocity_turret);
+
+    // then assign current velocity to previous
+    prev_sensed_velocity_right = current_vel_right;
+    prev_sensed_velocity_left = current_vel_left;
+    prev_sensed_velocity_turret = current_vel_turret;
+
+    // Something about position but we don't use this
+    // It also takes ~400 milliseconds to execute. 
+    // hamr_loc.update(sensed_M1_v, sensed_M2_v, WHEEL_DIST, time_elapsed);
+}
+
+float low_pass_velocity_filter(float current, float prev) {
+    // Simple low pass filter
+    // a = beta * (encoder_B) + (1 - beta) * encoder_B_Old (beta is <= 1)
+    float beta = 0.6; // Calculated 0.386, but 0.6 works well
+    return beta * current + (1 - beta) * prev;
 }
 
 float compute_avg(float* arr, int sz) {
-  float sum = 0;
-  for (int i = 0; i < sz; i++) {
-    sum += arr[i];
-  }
-  return sum / (float) sz;
-}
-
-float prevSensedVelocityRight;
-float prevSensedVelocityLeft;
-float prevSensedVelocityTurret;
-
-void compute_sensed_motor_velocities() {
-  // read decoders to get encoder counts
-
-  // [ED]- CHANGE HERE 
-  // uses the libas library to read from pins
-  // pins are CLK, DI, CSn- currently arbitrarily set to 1. 
-  // TODO: CHANGE THESE PINS LATER
-
-
-  // DUDE CHANGE THIS.
-  libas * libas_M1 = new libas(30, 32, 28, 12); 
-  libas * libas_M2 = new libas(24, 26, 22, 12); 
-  libas * libas_MT = new libas(38, 34, 36, 10);
-
-  decoder_count_M1 = libas_M1->GetPosition();
-  decoder_count_M2 = libas_M2->GetPosition();
-  decoder_count_MT = libas_MT->GetPosition();
-  delete libas_M1;
-  delete libas_M2;
-  delete libas_MT;
-  // =========
-
-  // in sudden jumps of encoder values: 
-  float decoder_count_change_M1;
-  float decoder_count_change_M2;
-  float decoder_count_change_MT;
-
-  // We could (and should) make this DRYer
-  if (decoder_count_M1_prev > 3500 && decoder_count_M1 < 500) {
-    decoder_count_change_M1 = 4095 - decoder_count_M1_prev + decoder_count_M1;
-  } else if (decoder_count_M1_prev < 500 && decoder_count_M1 > 3500) {
-    decoder_count_change_M1 = -1 * (4095 - decoder_count_M1 + decoder_count_M1_prev);
-  } else {
-    decoder_count_change_M1 = decoder_count_M1 - decoder_count_M1_prev;
-  }
-
-  if (decoder_count_M2_prev > 3500 && decoder_count_M2 < 500) {
-    decoder_count_change_M2 = 4095 - decoder_count_M2_prev + decoder_count_M2;
-  } else if (decoder_count_M2_prev < 500 && decoder_count_M2 > 3500) {
-    decoder_count_change_M2 = -1 * (4095 - decoder_count_M2 + decoder_count_M2_prev);
-  } else {
-    decoder_count_change_M2 = decoder_count_M2 - decoder_count_M2_prev;
-  }
-
-  /* 
-  aggregateCount
-
-
-  */
-//  if (decoder_count_MT_prev > 3500 && decoder_count_MT < 500) {
-//    decoder_count_change_MT = 4095 - decoder_count_MT_prev + decoder_count_MT;
-//  } else if (decoder_count_MT_prev < 500 && decoder_count_MT > 3500) {
-//    decoder_count_change_MT = -1 * (4095 - decoder_count_MT + decoder_count_MT_prev);
-//  } else {
-//    decoder_count_change_MT = decoder_count_MT - decoder_count_MT_prev;
-//  }
-
-    //decoder_count_MT = 1023 - decoder_count_MT;
-    if (decoder_count_MT_prev > 700 && decoder_count_MT < 300) {
-      decoder_count_change_MT = 1023 - decoder_count_MT_prev + decoder_count_MT;
-    } else if (decoder_count_MT_prev < 300 && decoder_count_MT > 700) {
-      decoder_count_change_MT = -1 * (1023 - decoder_count_MT + decoder_count_MT_prev);
-    } else {
-      decoder_count_change_MT = decoder_count_MT - decoder_count_MT_prev;
+    // Compute average of some array
+    // Used in previous implementation of low-pass filter
+    float sum = 0;
+    for (int i = 0; i < sz; i++) {
+        sum += arr[i];
     }
-   turret_tick_change = decoder_count_change_MT;
-
-
-  decoder_turret_total -= decoder_count_change_MT;
-
-  decoder_count_M1_prev = decoder_count_M1;
-  decoder_count_M2_prev = decoder_count_M2;
-  decoder_count_MT_prev = decoder_count_MT;
-
-  // [ed]- commented out
-//  Serial.print(decoder_count_M1);
-//  Serial.print(" ");
-//  Serial.print(decoder_count_M2);
-//  Serial.print(" ");
-//  Serial.print(decoder_count_MT);
-//  Serial.print("\n");
-
-  // Moving average filter on decoder count differences
-//  for (int i = 1; i < AVG_FILT_SZ; i++) {
-//    decoder_count_arr_M1[i] = decoder_count_arr_M1[i - 1];
-//    decoder_count_arr_M2[i] = decoder_count_arr_M2[i - 1];
-//    
-//  }
-//  for (int j = 1; j < 10; j++) {
-//    decoder_count_arr_MT[j] = decoder_count_arr_MT[j - 1];
-//  }
-//  decoder_count_arr_M1[0] = decoder_count_change_M1;
-//  decoder_count_arr_M2[0] = decoder_count_change_M2;
-//  decoder_count_arr_MT[0] = decoder_count_change_MT;
-//  float decoder_count_change_filt_M1 = compute_avg(decoder_count_arr_M1, AVG_FILT_SZ);
-//  float decoder_count_change_filt_M2 = compute_avg(decoder_count_arr_M2, AVG_FILT_SZ);
-//  float decoder_count_change_filt_MT = compute_avg(decoder_count_arr_MT, AVG_FILT_SZ);
-
-  // compute robot velocities
-//  sensed_M1_v = get_speed(decoder_count_change_filt_M1, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed);
-//  sensed_M2_v = get_speed(decoder_count_change_filt_M2, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed);
-//  sensed_MT_v = get_speed(decoder_count_change_filt_MT, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed);
-//  sensed_MT_v = get_ang_speed(decoder_count_change_filt_MT, TICKS_PER_REV_TURRET, time_elapsed);
-
-// Low-pass Filter
-  float currentVelRight = get_speed_from_difference(decoder_count_change_M1, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed
-  );
-  float currentVelLeft = get_speed_from_difference(decoder_count_change_M2, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed
-  );
-  float currentVelTurret = get_ang_speed_from_difference(decoder_count_change_MT, TICKS_PER_REV_TURRET, time_elapsed
-  );
-//
-  float beta = 0.6; //0.386;
-  
-  sensed_M1_v = beta * currentVelRight + (1 - beta) * prevSensedVelocityRight;
-  sensed_M2_v = beta * currentVelLeft + (1 - beta) * prevSensedVelocityLeft;
-  sensed_MT_v = beta * currentVelTurret + (1 - beta) * prevSensedVelocityTurret;
-
-  // M1 and M2 returning m/s
-  // sensed_MT_v returning degrees/s
-
-  prevSensedVelocityRight = currentVelRight;
-  prevSensedVelocityLeft = currentVelLeft;
-  prevSensedVelocityTurret = currentVelTurret;
-
-  // a = beta * (encoderB) + (1 - beta) * encoderBOld (beta is <= 1)
-
-  hamr_loc.update(sensed_M1_v, sensed_M2_v, WHEEL_DIST, time_elapsed
-  );
+    return sum / (float) sz;
 }
 
-/* initialize encoder interrupts for turret motor */
-// void init_encoder_interrupts(){
-//   pinMode(PIN_MT_ENCODER_A, INPUT);
-//   // pinMode(PIN_MT_ENCODER_B, INPUT);
+float calculate_decoder_count_change(
+    int prev, int current, int max, int lim_min, int lim_max) {
+    /*
+    prev: previously sensed
+    current: currently sensed
+    max: encoder max reading
+    lim_min and lim_max: desired floor and ceiling at which you determine that 
+    there has been an overflow.
 
-//   attachInterrupt(PIN_MT_ENCODER_A, rencoderA_MT, CHANGE);
-//   attachInterrupt(PIN_MT_ENCODER_B, rencoderB_MT, CHANGE);
-// }
-
-// encoder interrupts handlers
-// void rencoderA_M1()  {
-//   interrupt_M1_A = (PIOB->PIO_PDSR >> 17) & 1;
-//   if (interrupt_M1_A != interrupt_M1_B) curr_count_M1--; // encoderA changed before encoderB -> forward
-//   else                                  curr_count_M1++; // encoderB changed before encoderA -> reverse
-// }
-
-// void rencoderB_M1()  {
-//   interrupt_M1_B = (PIOB->PIO_PDSR >> 18) & 1;
-//   if (interrupt_M1_A != interrupt_M1_B) curr_count_M1++; // encoderB changed before encoderA -> reverse
-//   else                                  curr_count_M1--; // encoderA changed before encoderB -> forward
-// }
-
-// void rencoderA_M2()  {
-//   interrupt_M2_A = (PIOB->PIO_PDSR >> 19) & 1;
-//   if (interrupt_M2_A != interrupt_M2_B) curr_count_M2--; // encoderA changed before encoderB -> forward
-//   else                                  curr_count_M2++; // encoderB changed before encoderA -> reverse
-// }
-
-// void rencoderB_M2()  {
-//   interrupt_M2_B = (PIOB->PIO_PDSR >> 20) & 1;
-//   if (interrupt_M2_A != interrupt_M2_B) curr_count_M2++; // encoderB changed before encoderA -> reverse
-//   else                                  curr_count_M2--; // encoderA changed before encoderB -> forward
-// }
-
-// void rencoderA_MT()  {
-//   interrupt_MT_A = (PIOB->PIO_PDSR >> 21) & 1;
-//   if (interrupt_MT_A != interrupt_MT_B) curr_count_MT--; // encoderA changed before encoderB -> forward
-//   else                                  curr_count_MT++; // encoderB changed before encoderA -> reverse
-// }
-
-// void rencoderB_MT()  {
-//   interrupt_MT_B = (PIOB->PIO_PDSR >> 22) & 1;
-//   if (interrupt_MT_A != interrupt_MT_B) curr_count_MT++; // encoderB changed before encoderA -> reverse
-//   else                                  curr_count_MT--; // encoderA changed before encoderB -> forward
-// }
+    Calculates the difference of ticks between previously sensed and currently 
+    sensed. Takes into consideration if there has been an overflow between
+    readings (ie, encoder reads 4090 at time t, moves forward, then reads
+    3 at time t+1)
+    */
+    if (prev > lim_max && current < lim_min) {
+        return max - prev + current;
+    } else if (prev < lim_min && current > lim_max) {
+        return -1 * (max - current + prev);
+    } else {
+        return current - prev;
+    }
+}
 
 
 /*
@@ -804,11 +735,6 @@ void test_motors() {
   Serial.print("pwm: "); Serial.println(pwm);
   delay(50);
 }
-
-/******************************************/
-/* END MOTOR CODE
-  // /******************************************/
-
 
 /******************************************/
 /* BEGIN I2C CODE
