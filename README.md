@@ -2,8 +2,8 @@
 ## Version 3.0
 -Implements SSI communication  
 -ROS serial communication  
--Various changes in motor and holonomic Jacobian code from changes in hardware  
-
+-Various changes in motor and holonomic Jacobian code from changes in hardware   
+See the [hamr-ros wiki](https://github.com/ehyoo/hamr-ros/wiki) for more information. 
 ----  
 MODLAB, CRI Project (as of 3.0)
 ----
