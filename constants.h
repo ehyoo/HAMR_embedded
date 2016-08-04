@@ -12,7 +12,7 @@
  * Robot Constants. MODIFY THESE TO REFLECT NEW ROBOT
  */
 #define TICKS_PER_REV_DDRIVE  4096.0                  // number of encoder ticks in one full rotation on diff drive motor
-#define TICKS_PER_REV_TURRET  1024.0 * (220.0/24.0)  // actual measured 1024.0 * (220/24) (changed by CRI project- 1024 the new encoder, 220/24 being the other gear)
+#define TICKS_PER_REV_TURRET  1024.0 * (220.0/24.0)*(1.0+8.0/360.0)  // actual measured 1024.0 * (220/24) (changed by CRI project- 1024 the new encoder, 220/24 being the other gear)
 #define WHEEL_DIAMETER        0.12192                 // actually 4.85 ' diameter // in meters (4.8' diameter)  
 #define WHEEL_RADIUS          (WHEEL_DIAMETER / 2.0)  // wheel radius, in meters
 #define WHEEL_DIST            0.328168                // distance between diff drive wheels, in meters (12.92')

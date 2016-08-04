@@ -24,33 +24,33 @@
 /*******************************/
 // Message Importing
 #include <ros.h>
-#include <hamr_test/HamrStatus.h>
-#include <hamr_test/MotorStatus.h>
-#include <hamr_test/HamrCommand.h>
-#include <hamr_test/HoloStatus.h>
-#include <hamr_test/VelocityStatus.h>
+#include <hamr_interface/HamrStatus.h>
+#include <hamr_interface/MotorStatus.h>
+#include <hamr_interface/HamrCommand.h>
+#include <hamr_interface/HoloStatus.h>
+#include <hamr_interface/VelocityStatus.h>
 #include <ros/time.h>
 
 // Node and Publishing
 ros::NodeHandle nh;
-hamr_test::HamrStatus hamrStatus;
-hamr_test::MotorStatus leftMotor;
-hamr_test::MotorStatus rightMotor;
-hamr_test::MotorStatus turretMotor;
+hamr_interface::HamrStatus hamrStatus;
+hamr_interface::MotorStatus leftMotor;
+hamr_interface::MotorStatus rightMotor;
+hamr_interface::MotorStatus turretMotor;
 // By default, should publish to hamr_state topic
-ros::Publisher pub("hamr_state", &hamrStatus);
+// ros::Publisher pub("hamr_state", &hamrStatus);
 
 // Holonomic debugging 
-// hamr_test::HoloStatus holoStatus;
-// ros::Publisher pub("holo_state", &holoStatus);
+hamr_interface::HoloStatus holoStatus;
+ros::Publisher pub("holo_state", &holoStatus);
 
 // Turret Velocity debugging messages
-// hamr_test::VelocityStatus velStatus;
+// hamr_interface::VelocityStatus velStatus;
 // ros::Publisher pub("vel_state", &velStatus);
   
 // Subscribing
-void command_callback(const hamr_test::HamrCommand& command_msg);
-ros::Subscriber<hamr_test::HamrCommand> sub("hamr_command", &command_callback);
+void command_callback(const hamr_interface::HamrCommand& command_msg);
+ros::Subscriber<hamr_interface::HamrCommand> sub("hamr_command", &command_callback);
 
 /***************************************************/
 /*                                                 */
@@ -215,7 +215,7 @@ libas libas_MT(38, 34, 36, 10);
 /*    Miscellaneous    */
 /***********************/
 // Initial angle offset 
-int offset = 0;
+float offset = 0;
 bool did_set_offset = false;
 
 // dd localization
@@ -252,8 +252,10 @@ void loop() {
             time_elapsed = (float) (millis() - last_recorded_time);
             last_recorded_time = millis();
             compute_sensed_motor_velocities(); // read encoders
+            calculate_sensed_drive_angle();
             send_serial(); // Send the current state via ROS
-            check_for_test_execution(); // takes care of drive demo test commands
+            check_for_test_execution(); // takes care of drive demo test commands.TODO prevent this from running test if kill command was sent
+
             if (use_dif_drive) {
                 // NOTE: Differential drive is broken currently-
                 // giving T command, the whole body moves instead of the turret 
@@ -285,7 +287,6 @@ void loop() {
         //    } else if (!is_imu_working()) {
         //      sensed_drive_angle = hamr_loc.theta;
         //    }
-        calculate_sensed_drive_angle();
     }
 }
 
@@ -388,7 +389,7 @@ void set_speed_of_motors() {
 /*    ROS Functions    */
 /***********************/
 
-void command_callback(const hamr_test::HamrCommand& command_msg) {
+void command_callback(const hamr_interface::HamrCommand& command_msg) {
     // called when message is sent to arduino
     // matches the message type with each case and does its respective routine
     // More often than not simply reassigning a variable.
@@ -549,33 +550,36 @@ void send_serial() {
    rightMotor.desired_velocity = (int)(desired_M1_v * 1000);
    turretMotor.desired_velocity = (int)(desired_MT_v * 100);
    // These should be deleted later- these were put into messages purely for debugging
-   turretMotor.speed_cmd = (int)(roundf(MT_v_cmd * 100));
-   leftMotor.speed_cmd = 0;
-   rightMotor.speed_cmd = 0;
+   turretMotor.speed_cmd = (int)(roundf(MT_v_cmd ));
+//   leftMotor.speed_cmd = 0;
+//   rightMotor.speed_cmd = 0;
+   leftMotor.speed_cmd = (int)(roundf(M2_v_cmd ));
+   rightMotor.speed_cmd = (int)(roundf(M1_v_cmd ));
+   
    turretMotor.pidError = (int)(roundf(pidError * 100));
    leftMotor.pidError = 0;
    rightMotor.pidError = 0;
-   hamrStatus.timestamp = nh.now();
-   hamrStatus.left_motor = leftMotor;
-   hamrStatus.right_motor = rightMotor;
-   hamrStatus.turret_motor = turretMotor;
-   hamrStatus.looptime = loop_time_duration;
-   pub.publish(&hamrStatus);
+//   hamrStatus.timestamp = nh.now();
+//   hamrStatus.left_motor = leftMotor;
+//   hamrStatus.right_motor = rightMotor;
+//   hamrStatus.turret_motor = turretMotor;
+//   hamrStatus.looptime = loop_time_duration;
+//   pub.publish(&hamrStatus);
 
-//    holoStatus.setpoint_x =  (int)(h_xdot_cmd * 1000);
-//    holoStatus.setpoint_y = (int)(h_ydot_cmd * 1000);
-//    holoStatus.setpoint_r = (int)(h_rdot_cmd * 1000);
-//    holoStatus.xdot = (int)(computed_xdot*1000);
-//    holoStatus.ydot = (int)(computed_ydot*1000);
-//    holoStatus.tdot = (int)(computed_tdot*100);
-//    holoStatus.left_vel = (int)(sensed_M2_v * 1000);
-//    holoStatus.right_vel = (int)(sensed_M1_v * 1000);
-//    holoStatus.turret_vel = (int)(sensed_MT_v * 100);
-//    holoStatus.desired_left_vel = (int) (desired_M2_v * 1000);
-//    holoStatus.desired_right_vel = (int) (desired_M1_v * 1000);
-//    holoStatus.desired_turret_vel = (int) (desired_MT_v * 100);
-//    holoStatus.sensed_drive_angle = (int)(sensed_drive_angle*360);
-//    pub.publish(&holoStatus);
+    holoStatus.setpoint_x =  (int)(h_xdot_cmd * 1000);
+    holoStatus.setpoint_y = (int)(h_ydot_cmd * 1000);
+    holoStatus.setpoint_r = (int)(h_rdot_cmd * 1000);
+    holoStatus.xdot = (int)(computed_xdot*1000);
+    holoStatus.ydot = (int)(computed_ydot*1000);
+    holoStatus.tdot = (int)(computed_tdot*100);
+    holoStatus.left_vel = (int)(sensed_M2_v * 1000);
+    holoStatus.right_vel = (int)(sensed_M1_v * 1000);
+    holoStatus.turret_vel = (int)(sensed_MT_v * 100);
+    holoStatus.desired_left_vel = (int) (desired_M2_v * 1000);
+    holoStatus.desired_right_vel = (int) (desired_M1_v * 1000);
+    holoStatus.desired_turret_vel = (int) (desired_MT_v * 100);
+    holoStatus.sensed_drive_angle = (int)(sensed_drive_angle*360);
+    pub.publish(&holoStatus);
 
 
     // turret velocity debugging things
@@ -759,17 +763,19 @@ void test_I2C_decoder_count() {
 void check_for_test_execution() {
   // checks if the HAMR should start to execute any tests
     if (square_test_did_start) {
-        square_vid_test();
-        if (!timer_set) {
-            start_test_time = millis();
-            timer_set = true;
-        }  
-    } else if (right_test_did_start) {
-        right_angle_vid_test();
+        
         if (!timer_set) {
             start_test_time = millis();
             timer_set = true;
         }
+        square_vid_test();  
+    } else if (right_test_did_start) {
+        
+        if (!timer_set) {
+            start_test_time = millis();
+            timer_set = true;
+        }
+        right_angle_vid_test();
     }
 }
 

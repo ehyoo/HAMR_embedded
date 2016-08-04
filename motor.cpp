@@ -29,7 +29,7 @@ void set_speed(PID_Vars* pid,
     *pidError = speed_req - speed_act;
     // *pwm_val = round((speed_req)*255.0); //3
     *pwm_val = round((*speed_cmd)*255.0); // 2
-    *pwm_val = constrain(*pwm_val, -255, 255); // limit PWM values
+    *pwm_val = constrain(*pwm_val, -150, 150); // limit PWM values. Max is -255 to 255 but this is a safety limit now
 
     if (abs(*pwm_val) < 5) {
         // Deadband to help with nosie from encoders
@@ -43,6 +43,7 @@ void set_speed(PID_Vars* pid,
         // forward direction
         set_direction(pin_driver_dir, M1_FORWARD);
     }
+    *speed_cmd = *pwm_val;// the actual speed command is a funtion of the pwm command not the raw output as written above
     analogWrite(pin_pwm, abs(*pwm_val));
 } 
 
@@ -63,8 +64,7 @@ void set_speed_of_turret(PID_Vars* pid,
     *pidError = speed_req - speed_act;
     // *pwm_val = round((speed_req)*255.0); // 3
     *pwm_val = round((*speed_cmd)*255.0); //2
-    *pwm_val = constrain(*pwm_val, -255, 255); // limit PWM values
-
+    *pwm_val = constrain(*pwm_val, -150, 150); // limit PWM valuesMax is -255 to 255 but this is a safety limit now
     if (abs(*pwm_val) < 5) {
     // Deadband
      *pwm_val = 0.0;
@@ -77,6 +77,7 @@ void set_speed_of_turret(PID_Vars* pid,
         // forward direction
         set_direction(pin_driver_dir, M1_FORWARD);
     }
+    *speed_cmd = *pwm_val;// the actual speed command is a funtion of the pwm command not the raw output as written above
     analogWrite(pin_pwm, abs(*pwm_val));
 } 
 
