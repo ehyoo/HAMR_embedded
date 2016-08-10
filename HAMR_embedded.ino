@@ -188,6 +188,8 @@ int loop_time_duration; // Timing loop time- for performance testing
 /*    Test Drive Variables    */
 /******************************/
 unsigned long start_test_time;
+unsigned long current_time;
+int seconds, R;
 bool square_test_did_start = false;
 bool right_test_did_start = false;
 bool timer_set = false;
@@ -845,6 +847,30 @@ void right_angle_vid_test() {
         right_test_did_start = false;
         timer_set = false;
     }
+}
+
+void circle_test() {
+  current_time = millis();
+  seconds = (current_time - start_test_time)/1000;
+  R = .1;
+  desired_h_xdot = -R * sin(seconds);  //6.28 second revolution
+  desired_h_ydot = R * cos(seconds);  
+}
+
+void sinusoid_test() {
+  current_time = millis();
+  seconds = (current_time - start_test_time)/1000;
+  R = .1;
+  desired_h_xdot = -R * sin(seconds);  //6.28 second revolution
+  desired_h_ydot = R;  
+}
+
+void spiral_test() {
+  current_time = millis();
+  seconds = (current_time - start_test_time)/1000;
+  R = .1*seconds/10;
+  desired_h_xdot = -R * sin(seconds);  //6.28 second revolution
+  desired_h_ydot = R * cos(seconds);  //I think this is going to accelerate?
 }
 
 void zipper_path() {
