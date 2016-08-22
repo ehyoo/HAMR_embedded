@@ -105,7 +105,7 @@ float computed_ydot = 0.0;
 float computed_tdot = 0.0;
 
 // Summation of turret 
-// TODO: This will eventually overflow after a long time 
+// TODO: This will eventually overflow after a long time #
 // This is a corner case that shouldn't happen in normal operation, but still.
 long decoder_turret_total = 0;
 
@@ -321,7 +321,7 @@ void holonomic_drive() {
     // Takes care of holonomic drive
     // Gets the current x, y, and t dot then uses those values to calculate
     // jacobian and adjusts the motors.
-    compute_global_state(-1 * sensed_M1_v, 
+    compute_global_state(-1 * sensed_M1_v, //outputs x,y,r position of system. Could be used to close the loop. Not used for anything-could be unnecessary computing time
                         sensed_M2_v,
                         sensed_MT_v,
                         2*PI*sensed_drive_angle,
