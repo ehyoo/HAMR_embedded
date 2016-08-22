@@ -57,7 +57,7 @@ ros::Subscriber<hamr_interface::HamrCommand> sub("hamr_command", &command_callba
 /*                   VARIABLES                     */
 /*                                                 */
 /***************************************************/
-
+int debugmessage = 0;
 /******************/
 /* Desired Values */
 /******************/
@@ -125,8 +125,8 @@ float MT_v_cmd = 0;
 /* Control Parameters */
 /**********************/
 // Low-level PID 
-PID_Vars pid_vars_M1(0.6, 10.0, 0.005);
-PID_Vars pid_vars_M2(0.6, 10.0, 0.005);
+PID_Vars pid_vars_M1(0.4, 8.0, 0.005);
+PID_Vars pid_vars_M2(0.4, 8.0, 0.005);
 PID_Vars pid_vars_MT(0.005, 0.07, 0.0);
 PID_Vars dd_ctrl(0.1, 0.0, 0.0);
 
@@ -189,9 +189,14 @@ int loop_time_duration; // Timing loop time- for performance testing
 /******************************/
 unsigned long start_test_time;
 unsigned long current_time;
-int seconds, R;
+float seconds = 0;
+float R = 0;
 bool square_test_did_start = false;
 bool right_test_did_start = false;
+bool circle_test_did_start = false;
+bool spiral_test_did_start = false;
+bool sine_test_did_start = false;
+bool heading_circle_test_did_start = false;
 bool timer_set = false;
 
 /***************************/
@@ -404,6 +409,7 @@ void command_callback(const hamr_interface::HamrCommand& command_msg) {
     float* sig_var;
     char type = static_cast<char>(command_msg.type);
     String val = command_msg.val;
+    debugmessage = type;
     switch (type) {
       // holonomic inputs
         case SIG_HOLO_X:
@@ -532,6 +538,26 @@ void command_callback(const hamr_interface::HamrCommand& command_msg) {
             // Right Angle Test
             right_test_did_start = true;
             break;
+
+         case -102:
+         //Circle Test
+         circle_test_did_start = true;
+         break;
+
+        case -103:
+        //Spiral Test
+        spiral_test_did_start = true;
+        break;
+
+        case -104:
+        //Sinusoid Test
+        sine_test_did_start = true;
+        break;
+
+        case -105:
+        //Heading Circle
+        heading_circle_test_did_start = true;
+        break;
     }
       *sig_var = val.toFloat();
 }
@@ -568,9 +594,10 @@ void send_serial() {
 //   hamrStatus.looptime = loop_time_duration;
 //   pub.publish(&hamrStatus);
 
-    holoStatus.setpoint_x =  (int)(h_xdot_cmd * 1000);
+//    holoStatus.setpoint_x =  (int)(h_xdot_cmd * 1000);
     holoStatus.setpoint_y = (int)(h_ydot_cmd * 1000);
     holoStatus.setpoint_r = (int)(h_rdot_cmd * 1000);
+    holoStatus.setpoint_x = seconds * 1000;
     holoStatus.xdot = (int)(computed_xdot*1000);
     holoStatus.ydot = (int)(computed_ydot*1000);
     holoStatus.tdot = (int)(computed_tdot*100);
@@ -683,9 +710,8 @@ void compute_sensed_motor_velocities() {
 
 float low_pass_velocity_filter(float current, float prev) {
     // Simple low pass filter
-    // a = beta * (encoder_B) + (1 - beta) * encoder_B_Old (beta is <= 1)
-    float beta = 0.6; // Calculated 0.386, but 0.6 works well
-    return beta * current + (1 - beta) * prev;
+    float beta = 0.386; // Calculated 0.386, but 0.6 works well
+    return beta * current + (1 - beta) * prev; //filter at 10 hz - Tarik.
 }
 
 float compute_avg(float* arr, int sz) {
@@ -778,7 +804,33 @@ void check_for_test_execution() {
             timer_set = true;
         }
         right_angle_vid_test();
-    }
+    }else if (circle_test_did_start) {
+        
+        if (!timer_set) {
+            start_test_time = millis();
+            timer_set = true;
+        }
+        circle_test();
+    }else if (spiral_test_did_start) {
+        
+        if (!timer_set) {
+            start_test_time = millis();
+            timer_set = true;
+        }
+        spiral_test();
+    }else if (sine_test_did_start) {
+      if (!timer_set) {
+            start_test_time = millis();
+            timer_set = true;
+        }
+        sinusoid_test();
+    } else if (heading_circle_test_did_start) {
+      if (!timer_set) {
+            start_test_time = millis();
+            timer_set = true;
+        }
+        heading_circle_test();
+    } 
 }
 
 int increment = 1;
@@ -850,28 +902,93 @@ void right_angle_vid_test() {
 }
 
 void circle_test() {
-  current_time = millis();
-  seconds = (current_time - start_test_time)/1000;
-  R = .1;
-  desired_h_xdot = -R * sin(seconds);  //6.28 second revolution
-  desired_h_ydot = R * cos(seconds);  
+  debugmessage = -1;
+  int circle_size = 4;
+  if(millis() < start_test_time + 5000) {
+    desired_h_xdot = 0;
+    desired_h_ydot = 0;
+      debugmessage = 1;
+
+  } else if(millis() < start_test_time + 5000 + circle_size*6282) {
+  seconds = (float)(millis() - start_test_time-5000)/1000.0;
+  R = .2;
+    
+    desired_h_xdot = (float)-R * (float)sin(seconds/(float)circle_size);  //6.28*circle_size second revolution
+  desired_h_ydot = (float)R * (float)cos(seconds/(float)circle_size);
+  debugmessage = desired_h_xdot;
+
+  }else {
+        desired_h_xdot = 0;
+        desired_h_ydot = 0;
+        circle_test_did_start = false;
+        timer_set = false;
+          debugmessage = 3;
+ 
+  } 
 }
 
 void sinusoid_test() {
-  current_time = millis();
-  seconds = (current_time - start_test_time)/1000;
-  R = .1;
-  desired_h_xdot = -R * sin(seconds);  //6.28 second revolution
+  int curve_size = 2;
+  if(millis() < start_test_time + 5000) {
+    desired_h_xdot = 0;
+    desired_h_ydot = 0;
+  } else if(millis() < start_test_time + 5000 + 6282*curve_size) {
+  seconds = (float)(millis() - start_test_time-5000)/1000.0;
+  R = .2;
+  
+  desired_h_xdot = -R * sin(seconds/(float)curve_size);  //6.28*curve_size second revolution
   desired_h_ydot = R;  
+  }else {
+        desired_h_xdot = 0;
+        desired_h_ydot = 0;
+        sine_test_did_start = false;
+        timer_set = false;
+  }
 }
 
 void spiral_test() {
-  current_time = millis();
-  seconds = (current_time - start_test_time)/1000;
-  R = .1*seconds/10;
+  if(millis() < start_test_time + 5000) {
+    desired_h_xdot = 0;
+    desired_h_ydot = 0;
+  } else if(millis() < start_test_time + 35000) {
+  seconds = (float)(millis() - start_test_time-5000)/1000.0;
+  R = .2*seconds/10;
+  
   desired_h_xdot = -R * sin(seconds);  //6.28 second revolution
   desired_h_ydot = R * cos(seconds);  //I think this is going to accelerate?
+  } else {
+        desired_h_xdot = 0;
+        desired_h_ydot = 0;
+        spiral_test_did_start = false;
+        timer_set = false;
+  }
 }
+
+void heading_circle_test() {
+  int circle_size = 4;
+  if(millis() < start_test_time + 5000) {
+    desired_h_xdot = 0;
+    desired_h_ydot = 0;
+      debugmessage = 1;
+  } else if(millis() < start_test_time + 5000 + circle_size*6282) {
+  seconds = (float)(millis() - start_test_time-5000)/1000.0;
+  R = .2;
+    
+  desired_h_xdot = 0;  //6.28*circle_size second revolution
+  desired_h_ydot = .2;
+  desired_h_rdot = (float)6.282/(((float)circle_size * 6282)/1000);
+  debugmessage = desired_h_xdot;
+
+  }else {
+        desired_h_xdot = 0;
+        desired_h_ydot = 0;
+        desired_h_rdot = 0;
+        heading_circle_test_did_start = false;
+        timer_set = false;
+          debugmessage = 3;
+ 
+  } 
+  }
 
 void zipper_path() {
     if(millis() < start_time + 4000){

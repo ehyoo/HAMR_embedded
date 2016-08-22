@@ -50,8 +50,8 @@ void get_holonomic_motor_velocities(float _state_theta_dheta_d,
     compute_ramsis_jacobian(desired_x, desired_y, desired_r, sensed_theta_d);
 
     //compte_ramsis-jacobian updates the output variables
-    * _output_m1 = -1 * output_m1; // to account for signs
-    * _output_m2 = output_m2;
+    * _output_m1 = -1 * output_m2; // to account for signs
+    * _output_m2 = output_m1;
     * _output_mt = output_mt;
 }
 
@@ -117,7 +117,7 @@ void compute_ramsis_jacobian(float desired_xdot,
     //    output_mt = (180/PI) * ((-desired_xdot * cost - desired_ydot * sint) / DIM_B + desired_tdot);
 
     // Isolated Y works correctly, X angles are correct but moves in wrong direction and still flips itself around. Does not reorient itself after sending y command.
-    output_mt   = (180/PI) * ((desired_xdot * cost + desired_ydot * sint) / DIM_B + desired_tdot);
+    output_mt   = (180/PI) * ((-desired_xdot * cost - desired_ydot * sint) / DIM_B + desired_tdot);
 }
 
 void set_holonomic_desired_velocities(float xdot, float ydot, float rdot) {

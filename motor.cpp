@@ -29,9 +29,9 @@ void set_speed(PID_Vars* pid,
     *pidError = speed_req - speed_act;
     // *pwm_val = round((speed_req)*255.0); //3
     *pwm_val = round((*speed_cmd)*255.0); // 2
-    *pwm_val = constrain(*pwm_val, -150, 150); // limit PWM values. Max is -255 to 255 but this is a safety limit now
+    *pwm_val = constrain(*pwm_val, -255, 255); // limit PWM values. Max is -255 to 255 but this is a safety limit now
 
-    if (abs(*pwm_val) < 5) {
+    if (speed_req==0) {
         // Deadband to help with nosie from encoders
         *pwm_val = 0.0;
     }
@@ -64,12 +64,12 @@ void set_speed_of_turret(PID_Vars* pid,
     *pidError = speed_req - speed_act;
     // *pwm_val = round((speed_req)*255.0); // 3
     *pwm_val = round((*speed_cmd)*255.0); //2
-    *pwm_val = constrain(*pwm_val, -150, 150); // limit PWM valuesMax is -255 to 255 but this is a safety limit now
-    if (abs(*pwm_val) < 5) {
+    *pwm_val = constrain(*pwm_val, -255, 255); // limit PWM valuesMax is -255 to 255 but this is a safety limit now
+    if (speed_req ==0) {
     // Deadband
      *pwm_val = 0.0;
     }
-  
+    
     if (*pwm_val < 0) {
         // reverse direction
         set_direction(pin_driver_dir, !M1_FORWARD);
