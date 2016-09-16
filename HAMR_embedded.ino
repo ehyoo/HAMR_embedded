@@ -572,9 +572,15 @@ void send_basic_info() {
   //Timestamp
 //  Serial.println(n/h.now());
   // Sensed Velocities
+  hamr_state_msg();
+
+}
+
+void raw_velocity_msg() {
+  // Sends desired l, r, t velocities as well as their sensed.
+  // be weary of the leading space- python implementation needs it. 
   String velocity_message = String("");
-  velocity_message += "lv";
-  velocity_message += (int) (sensed_M2_v * 1000);
+  velocity_message += String("lv") + (int) (sensed_M2_v * 1000);
   velocity_message += " rv";
   velocity_message += (int) (sensed_M1_v * 1000);
   velocity_message += " tv";
@@ -585,9 +591,21 @@ void send_basic_info() {
   velocity_message += (int) (desired_M1_v * 1000);
   velocity_message += " dt";
   velocity_message += (int) (desired_MT_v * 1000);
-  velocity_message += " tm";
-  velocity_message += 123; //TODO
   Serial.println(velocity_message);
+  
+}
+
+void hamr_state_msg() {
+  // sends sensed and desired x, y, and t dot as well as turret angle.
+  String msg = String("");
+  msg += String("cx") + (int) (computed_xdot*1000);
+  msg += String(" cy") + (int)(computed_ydot*1000);
+  msg += String(" ct") + (int)(computed_tdot*1000);
+  msg += String(" hx") + (int)(h_xdot_cmd * 1000);
+  msg += String(" hy") + (int)(h_ydot_cmd * 1000);
+  msg += String(" hr") + (int)(h_rdot_cmd * 1000);
+  msg += String(" sd") + (int)(sensed_drive_angle*360*1000);
+  Serial.println(msg);
 }
 
 //
