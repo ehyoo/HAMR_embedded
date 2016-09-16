@@ -26,15 +26,11 @@ void set_speed(PID_Vars* pid,
                float* pidError) {
     // Sets the direction and Arduino PWM of M1 and M2 to desired speed
     *speed_cmd = pid->update_pid(speed_req, speed_act, t_elapsed); // 1
+    
     *pidError = speed_req - speed_act;
-    // *pwm_val = round((speed_req)*255.0); //3
+    
     *pwm_val = round((*speed_cmd)*255.0); // 2
     *pwm_val = constrain(*pwm_val, -255, 255); // limit PWM values. Max is -255 to 255 but this is a safety limit now
-
-    if (speed_req==0) {
-        // Deadband to help with nosie from encoders
-        *pwm_val = 0.0;
-    }
 
     if (*pwm_val < 0) {
         // reverse direction

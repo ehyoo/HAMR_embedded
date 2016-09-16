@@ -565,28 +565,28 @@ void command_callback(const hamr_interface::HamrCommand& command_msg) {
 int turret_tick_change; // For debugging purposes for sending through serial- you should delete this later
   
 void send_serial() {
-   leftMotor.position = decoder_count_M2;
-   rightMotor.position = decoder_count_M1;
-   turretMotor.position = decoder_count_MT;
+   //leftMotor.position = decoder_count_M2;
+   //rightMotor.position = decoder_count_M1;
+   //turretMotor.position = decoder_count_MT;
    // Arbitrary 1000 multiplied to ensure that we can send it over as an int. 
    // Just think of it as mm/s 
    // This should be fixed soon.
-   leftMotor.velocity = (int)(sensed_M2_v * 1000);
-   rightMotor.velocity = (int)(sensed_M1_v * 1000);
-   turretMotor.velocity = (int)(sensed_MT_v * 100);
-   leftMotor.desired_velocity = (int)(desired_M2_v * 1000);
-   rightMotor.desired_velocity = (int)(desired_M1_v * 1000);
-   turretMotor.desired_velocity = (int)(desired_MT_v * 100);
+   //leftMotor.velocity = (int)(sensed_M2_v * 1000);
+   //rightMotor.velocity = (int)(sensed_M1_v * 1000);
+   //turretMotor.velocity = (int)(sensed_MT_v * 100);
+   //leftMotor.desired_velocity = (int)(desired_M2_v * 1000);
+   //rightMotor.desired_velocity = (int)(desired_M1_v * 1000);
+   //turretMotor.desired_velocity = (int)(desired_MT_v * 100);
    // These should be deleted later- these were put into messages purely for debugging
-   turretMotor.speed_cmd = (int)(roundf(MT_v_cmd ));
+   //turretMotor.speed_cmd = (int)(roundf(MT_v_cmd ));
 //   leftMotor.speed_cmd = 0;
 //   rightMotor.speed_cmd = 0;
-   leftMotor.speed_cmd = (int)(roundf(M2_v_cmd ));
-   rightMotor.speed_cmd = (int)(roundf(M1_v_cmd ));
+   //leftMotor.speed_cmd = (int)(roundf(M2_v_cmd ));
+   //rightMotor.speed_cmd = (int)(roundf(M1_v_cmd ));
    
-   turretMotor.pidError = (int)(roundf(pidError * 100));
-   leftMotor.pidError = 0;
-   rightMotor.pidError = 0;
+   //turretMotor.pidError = (int)(roundf(pidError * 100));
+   //leftMotor.pidError = 0;
+   //rightMotor.pidError = 0;
 //   hamrStatus.timestamp = nh.now();
 //   hamrStatus.left_motor = leftMotor;
 //   hamrStatus.right_motor = rightMotor;
@@ -887,11 +887,15 @@ void square_vid_test() {
 
 /*RIGHT ANGLE VIDEO TEST*/
 void right_angle_vid_test() {
-    if(millis() < start_test_time + 6000){
+  
+    if(millis() < start_test_time + 3000) {
         desired_h_xdot = 0;
-        desired_h_ydot = .2;
-    } else if(millis() < start_test_time + 12000){
-        desired_h_xdot = -.2;
+        desired_h_ydot = 0;
+    } else if(millis() < start_test_time + 3750){
+        desired_h_xdot = 0;
+        desired_h_ydot = .75;
+    } else if(millis() < start_test_time + 4500){
+        desired_h_xdot = -.75;
         desired_h_ydot = 0;
     } else {
         desired_h_xdot = 0;
