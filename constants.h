@@ -98,3 +98,4 @@ const int M2_DECODER_D_PINS[8] = {5,7,8,9,10,11,12,13}; // D0-D7 pinouts
 const int MT_DECODER_D_PINS[8] = {44,42,40,38,36,34,32,30}; // D0-D7 pinouts
 
 #endif
+

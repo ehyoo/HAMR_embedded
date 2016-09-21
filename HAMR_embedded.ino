@@ -365,9 +365,6 @@ void calculate_sensed_drive_angle() {
 
 void set_speed_of_motors() {
     // sets the speed of all three of the motors
-    Serial.println("SET SPEED=======================================================================");
-    Serial.println(desired_M1_v);
-    Serial.println(desired_M2_v);
     set_speed(&pid_vars_M1,
             desired_M1_v,
             sensed_M1_v,
@@ -411,14 +408,13 @@ void read_serial() {
     // the HamrCommand msg is detailed as follows:
     // string type (the type that corresponds to the switch cases)
     // string val (the value of the float)
-    if (Serial.available() > 0) {
+    if (Serial.available()) {
         String str;
         float temp;
         float* sig_var;
         
-      
+        Serial.println("Begin");
         int type_representation = Serial.read();
-        float value_representation = Serial.readString().toFloat();
 
         switch (type_representation) {
             // holonomic inputs
@@ -428,7 +424,6 @@ void read_serial() {
 
             case SIG_HOLO_Y:
                 sig_var = &desired_h_ydot;
-                Serial.println("=============================hits===============================");
                 break;
 
             case SIG_HOLO_R:
@@ -570,7 +565,10 @@ void read_serial() {
                 heading_circle_test_did_start = true;
                 break;
         }
-        *sig_var = value_representation;
+        byte buf[4];
+        Serial.readBytes(buf, 4);
+        *sig_var = *((float*)(buf));
+        Serial.println("End");
     }
 }
 
@@ -1275,3 +1273,4 @@ int adjust_speed(int pwm, int desired) {
     }
     return pwm;
 }
+

@@ -98,3 +98,4 @@ float get_ang_speed_from_difference(long difference,
     // time_elapsed: time in milliseconds
     return -1 * 360 * (((float) difference) / ticks_per_rev) / (time_elapsed / 1000.0);
 }
+
