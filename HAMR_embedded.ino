@@ -1,10 +1,10 @@
-/***********************************/
-/*                                 */
-/*        HAMR_embedded.ino        */
-/* Version 3 of HAMR embedded code */
-/*             MODLAB              */
-/*                                 */
-/***********************************/
+/*************************************/
+/*                                   */
+/*          HAMR_embedded.ino        */
+/* Version 3.1 of HAMR embedded code */
+/*               MODLAB              */
+/*                                   */
+/*************************************/
 // Notes:
 // M1 => RIGHT MOTOR
 // M2 => LEFT MOTOR
@@ -261,9 +261,9 @@ void loop() {
         if ((millis() - last_recorded_time) >= LOOPTIME) { // ensures stable loop time
             time_elapsed = (float) (millis() - last_recorded_time);
             last_recorded_time = millis();
+            read_serial();
             compute_sensed_motor_velocities(); // read encoders
             calculate_sensed_drive_angle();
-//            send_serial(/); // Send the current state via ROS
             send_basic_info();
             check_for_test_execution(); // takes care of drive demo test commands.TODO prevent this from running test if kill command was sent
 
@@ -365,6 +365,9 @@ void calculate_sensed_drive_angle() {
 
 void set_speed_of_motors() {
     // sets the speed of all three of the motors
+    Serial.println("SET SPEED=======================================================================");
+    Serial.println(desired_M1_v);
+    Serial.println(desired_M2_v);
     set_speed(&pid_vars_M1,
             desired_M1_v,
             sensed_M1_v,
@@ -399,6 +402,178 @@ void set_speed_of_motors() {
 /***********************/
 /*    ROS Functions    */
 /***********************/
+
+void read_serial() {
+    // called when message is sent to arduino
+    // matches the message type with each case and does its respective routine
+    // More often than not simply reassigning a variable.
+
+    // the HamrCommand msg is detailed as follows:
+    // string type (the type that corresponds to the switch cases)
+    // string val (the value of the float)
+    if (Serial.available() > 0) {
+        String str;
+        float temp;
+        float* sig_var;
+        
+      
+        int type_representation = Serial.read();
+        float value_representation = Serial.readString().toFloat();
+
+        switch (type_representation) {
+            // holonomic inputs
+            case SIG_HOLO_X:
+                sig_var = &desired_h_xdot;
+                break;
+
+            case SIG_HOLO_Y:
+                sig_var = &desired_h_ydot;
+                Serial.println("=============================hits===============================");
+                break;
+
+            case SIG_HOLO_R:
+                sig_var = &desired_h_rdot;
+                break;
+
+          // differential drive inputs
+            case SIG_DD_V:
+                sig_var = &desired_dd_v;
+                break;
+
+            case SIG_DD_R:
+                sig_var = &desired_dd_r;
+                break;
+
+          // motor velocities
+            case SIG_R_MOTOR:
+                sig_var = &desired_M1_v;
+                break;
+
+            case SIG_L_MOTOR:
+                sig_var = &desired_M2_v;
+                break;
+
+            case SIG_T_MOTOR:
+                sig_var = &desired_MT_v;
+                break;
+
+          // right motor PID
+            case SIG_R_KP:
+                sig_var = &(pid_vars_M1.Kp);
+                break;
+
+            case SIG_R_KI:
+                sig_var = &(pid_vars_M1.Ki);
+                break;
+
+            case SIG_R_KD:
+                sig_var = &(pid_vars_M1.Kd);
+                break;
+
+          // left motor PID
+            case SIG_L_KP:
+                sig_var = &(pid_vars_M2.Kp);
+                break;
+
+            case SIG_L_KI:
+                sig_var = &(pid_vars_M2.Ki);
+                break;
+
+            case SIG_L_KD:
+                sig_var = &(pid_vars_M2.Kd);
+                break;
+
+          // turret motor PID
+            case SIG_T_KP:
+                // sig_var = &(pid_vars_MT.Kp); 
+                sig_var = &(dd_ctrl.Kp);
+                break;
+
+            case SIG_T_KI:
+                // sig_var = &(pid_vars_MT.Ki);
+                sig_var = &(dd_ctrl.Ki);
+                break;
+
+            case SIG_T_KD:
+                // sig_var = &(pid_vars_MT.Kd);
+                sig_var = &(dd_ctrl.Kd);
+                break;
+
+          // holonomic X PID
+            case SIG_HOLO_X_KP:
+                sig_var = &(pid_vars_h_xdot.Kp);
+                break;
+
+            case SIG_HOLO_X_KI:
+                sig_var = &(pid_vars_h_xdot.Ki);
+                break;
+
+            case SIG_HOLO_X_KD:
+                sig_var = &(pid_vars_h_xdot.Kd);
+                break;
+
+          // holonomic Y PID
+
+            case SIG_HOLO_Y_KP:
+                sig_var = &(pid_vars_h_ydot.Kp);
+                break;
+
+            case SIG_HOLO_Y_KI:
+                sig_var = &(pid_vars_h_ydot.Ki);
+                break;
+
+            case SIG_HOLO_Y_KD:
+                sig_var = &(pid_vars_h_ydot.Kd);
+                break;
+
+          // holonomic R PID
+
+            case SIG_HOLO_R_KP:
+                sig_var = &(pid_vars_h_rdot.Kp);
+                break;
+
+            case SIG_HOLO_R_KI:
+                sig_var = &(pid_vars_h_rdot.Ki);
+                break;
+
+            case SIG_HOLO_R_KD:
+                sig_var = &(pid_vars_h_rdot.Kd);
+                break;
+          // Tests on command
+            case -100:
+                // Square Test
+                square_test_did_start = true;
+                break;
+
+            case -101:
+                // Right Angle Test
+                right_test_did_start = true;
+                break;
+
+             case -102:
+             //Circle Test
+                 circle_test_did_start = true;
+                 break;
+
+            case -103:
+            //Spiral Test
+                spiral_test_did_start = true;
+                break;
+
+            case -104:
+            //Sinusoid Test
+                sine_test_did_start = true;
+                break;
+
+            case -105:
+            //Heading Circle
+                heading_circle_test_did_start = true;
+                break;
+        }
+        *sig_var = value_representation;
+    }
+}
+
 
 void command_callback(const hamr_interface::HamrCommand& command_msg) {
     // called when message is sent to arduino
