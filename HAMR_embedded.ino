@@ -23,20 +23,20 @@
 /*   ROS Serial Communication  */
 /*******************************/
 // Message Importing
-#include <ros.h>
-#include <hamr_interface/HamrStatus.h>
-#include <hamr_interface/MotorStatus.h>
-#include <hamr_interface/HamrCommand.h>
-#include <hamr_interface/HoloStatus.h>
-#include <hamr_interface/VelocityStatus.h>
-#include <ros/time.h>
+//#include <ros.h>
+//#include <hamr_interface/HamrStatus.h>
+//#include <hamr_interface/MotorStatus.h>
+//#include <hamr_interface/HamrCommand.h>
+//#include <hamr_interface/HoloStatus.h>
+//#include <hamr_interface/VelocityStatus.h>
+//#include <ros/time.h>
 
 // Node and Publishing
-ros::NodeHandle nh;
-hamr_interface::HamrStatus hamrStatus;
-hamr_interface::MotorStatus leftMotor;
-hamr_interface::MotorStatus rightMotor;
-hamr_interface::MotorStatus turretMotor;
+//ros::NodeHandle nh;
+//hamr_interface::HamrStatus hamrStatus;
+//hamr_interface::MotorStatus leftMotor;
+//hamr_interface::MotorStatus rightMotor;
+//hamr_interface::MotorStatus turretMotor;
 // By default, should publish to hamr_state topic
 // ros::Publisher pub("hamr_state", &hamrStatus);
 
@@ -264,7 +264,7 @@ void loop() {
             read_serial();
             compute_sensed_motor_velocities(); // read encoders
             calculate_sensed_drive_angle();
-            send_basic_info();
+            //send_basic_info();
             check_for_test_execution(); // takes care of drive demo test commands.TODO prevent this from running test if kill command was sent
 
             if (use_dif_drive) {
@@ -412,21 +412,27 @@ void read_serial() {
         String str;
         float temp;
         float* sig_var;
+        byte buf[4];
         
-        Serial.println("Begin");
         int type_representation = Serial.read();
+        
+        Serial.readBytes(buf, 4);
+                
 
         switch (type_representation) {
             // holonomic inputs
             case SIG_HOLO_X:
+                Serial.println("received x");
                 sig_var = &desired_h_xdot;
                 break;
 
             case SIG_HOLO_Y:
+            Serial.println("received y");
                 sig_var = &desired_h_ydot;
                 break;
 
             case SIG_HOLO_R:
+            Serial.println("received r");
                 sig_var = &desired_h_rdot;
                 break;
 
@@ -565,179 +571,177 @@ void read_serial() {
                 heading_circle_test_did_start = true;
                 break;
         }
-        byte buf[4];
-        Serial.readBytes(buf, 4);
         *sig_var = *((float*)(buf));
         Serial.println("End");
     }
 }
 
 
-void command_callback(const hamr_interface::HamrCommand& command_msg) {
-    // called when message is sent to arduino
-    // matches the message type with each case and does its respective routine
-    // More often than not simply reassigning a variable.
-
-    // the HamrCommand msg is detailed as follows:
-    // string type (the type that corresponds to the switch cases)
-    // string val (the value of the float)
-    String str;
-    float temp;
-    float* sig_var;
-    char type = static_cast<char>(command_msg.type);
-    String val = command_msg.val;
-    debugmessage = type;
-    switch (type) {
-      // holonomic inputs
-        case SIG_HOLO_X:
-            sig_var = &desired_h_xdot;
-            break;
-
-        case SIG_HOLO_Y:
-            sig_var = &desired_h_ydot;
-            break;
-
-        case SIG_HOLO_R:
-            sig_var = &desired_h_rdot;
-            break;
-
-      // differential drive inputs
-        case SIG_DD_V:
-            sig_var = &desired_dd_v;
-            break;
-
-        case SIG_DD_R:
-            sig_var = &desired_dd_r;
-            break;
-
-      // motor velocities
-        case SIG_R_MOTOR:
-            sig_var = &desired_M1_v;
-            break;
-
-        case SIG_L_MOTOR:
-            sig_var = &desired_M2_v;
-            break;
-
-        case SIG_T_MOTOR:
-            sig_var = &desired_MT_v;
-            break;
-
-      // right motor PID
-        case SIG_R_KP:
-            sig_var = &(pid_vars_M1.Kp);
-            break;
-
-        case SIG_R_KI:
-            sig_var = &(pid_vars_M1.Ki);
-            break;
-
-        case SIG_R_KD:
-            sig_var = &(pid_vars_M1.Kd);
-            break;
-
-      // left motor PID
-        case SIG_L_KP:
-            sig_var = &(pid_vars_M2.Kp);
-            break;
-
-        case SIG_L_KI:
-            sig_var = &(pid_vars_M2.Ki);
-            break;
-
-        case SIG_L_KD:
-            sig_var = &(pid_vars_M2.Kd);
-            break;
-
-      // turret motor PID
-        case SIG_T_KP:
-            // sig_var = &(pid_vars_MT.Kp); 
-            sig_var = &(dd_ctrl.Kp);
-        break;
-
-        case SIG_T_KI:
-            // sig_var = &(pid_vars_MT.Ki);
-            sig_var = &(dd_ctrl.Ki);
-        break;
-
-        case SIG_T_KD:
-            // sig_var = &(pid_vars_MT.Kd);
-            sig_var = &(dd_ctrl.Kd);
-            break;
-
-      // holonomic X PID
-        case SIG_HOLO_X_KP:
-            sig_var = &(pid_vars_h_xdot.Kp);
-            break;
-
-        case SIG_HOLO_X_KI:
-            sig_var = &(pid_vars_h_xdot.Ki);
-            break;
-
-        case SIG_HOLO_X_KD:
-            sig_var = &(pid_vars_h_xdot.Kd);
-            break;
-
-      // holonomic Y PID
-
-        case SIG_HOLO_Y_KP:
-            sig_var = &(pid_vars_h_ydot.Kp);
-            break;
-
-        case SIG_HOLO_Y_KI:
-            sig_var = &(pid_vars_h_ydot.Ki);
-            break;
-
-        case SIG_HOLO_Y_KD:
-            sig_var = &(pid_vars_h_ydot.Kd);
-            break;
-
-      // holonomic R PID
-
-        case SIG_HOLO_R_KP:
-            sig_var = &(pid_vars_h_rdot.Kp);
-            break;
-
-        case SIG_HOLO_R_KI:
-            sig_var = &(pid_vars_h_rdot.Ki);
-            break;
-
-        case SIG_HOLO_R_KD:
-            sig_var = &(pid_vars_h_rdot.Kd);
-            break;
-      // Tests on command
-        case -100:
-            // Square Test
-            square_test_did_start = true;
-            break;
-
-        case -101:
-            // Right Angle Test
-            right_test_did_start = true;
-            break;
-
-         case -102:
-         //Circle Test
-         circle_test_did_start = true;
-         break;
-
-        case -103:
-        //Spiral Test
-        spiral_test_did_start = true;
-        break;
-
-        case -104:
-        //Sinusoid Test
-        sine_test_did_start = true;
-        break;
-
-        case -105:
-        //Heading Circle
-        heading_circle_test_did_start = true;
-        break;
-    }
-      *sig_var = val.toFloat();
-}
+//void command_callback(const hamr_interface::HamrCommand& command_msg) {
+//    // called when message is sent to arduino
+//    // matches the message type with each case and does its respective routine
+//    // More often than not simply reassigning a variable.
+//
+//    // the HamrCommand msg is detailed as follows:
+//    // string type (the type that corresponds to the switch cases)
+//    // string val (the value of the float)
+//    String str;
+//    float temp;
+//    float* sig_var;
+//    char type = static_cast<char>(command_msg.type);
+//    String val = command_msg.val;
+//    debugmessage = type;
+//    switch (type) {
+//      // holonomic inputs
+//        case SIG_HOLO_X:
+//            sig_var = &desired_h_xdot;
+//            break;
+//
+//        case SIG_HOLO_Y:
+//            sig_var = &desired_h_ydot;
+//            break;
+//
+//        case SIG_HOLO_R:
+//            sig_var = &desired_h_rdot;
+//            break;
+//
+//      // differential drive inputs
+//        case SIG_DD_V:
+//            sig_var = &desired_dd_v;
+//            break;
+//
+//        case SIG_DD_R:
+//            sig_var = &desired_dd_r;
+//            break;
+//
+//      // motor velocities
+//        case SIG_R_MOTOR:
+//            sig_var = &desired_M1_v;
+//            break;
+//
+//        case SIG_L_MOTOR:
+//            sig_var = &desired_M2_v;
+//            break;
+//
+//        case SIG_T_MOTOR:
+//            sig_var = &desired_MT_v;
+//            break;
+//
+//      // right motor PID
+//        case SIG_R_KP:
+//            sig_var = &(pid_vars_M1.Kp);
+//            break;
+//
+//        case SIG_R_KI:
+//            sig_var = &(pid_vars_M1.Ki);
+//            break;
+//
+//        case SIG_R_KD:
+//            sig_var = &(pid_vars_M1.Kd);
+//            break;
+//
+//      // left motor PID
+//        case SIG_L_KP:
+//            sig_var = &(pid_vars_M2.Kp);
+//            break;
+//
+//        case SIG_L_KI:
+//            sig_var = &(pid_vars_M2.Ki);
+//            break;
+//
+//        case SIG_L_KD:
+//            sig_var = &(pid_vars_M2.Kd);
+//            break;
+//
+//      // turret motor PID
+//        case SIG_T_KP:
+//            // sig_var = &(pid_vars_MT.Kp); 
+//            sig_var = &(dd_ctrl.Kp);
+//        break;
+//
+//        case SIG_T_KI:
+//            // sig_var = &(pid_vars_MT.Ki);
+//            sig_var = &(dd_ctrl.Ki);
+//        break;
+//
+//        case SIG_T_KD:
+//            // sig_var = &(pid_vars_MT.Kd);
+//            sig_var = &(dd_ctrl.Kd);
+//            break;
+//
+//      // holonomic X PID
+//        case SIG_HOLO_X_KP:
+//            sig_var = &(pid_vars_h_xdot.Kp);
+//            break;
+//
+//        case SIG_HOLO_X_KI:
+//            sig_var = &(pid_vars_h_xdot.Ki);
+//            break;
+//
+//        case SIG_HOLO_X_KD:
+//            sig_var = &(pid_vars_h_xdot.Kd);
+//            break;
+//
+//      // holonomic Y PID
+//
+//        case SIG_HOLO_Y_KP:
+//            sig_var = &(pid_vars_h_ydot.Kp);
+//            break;
+//
+//        case SIG_HOLO_Y_KI:
+//            sig_var = &(pid_vars_h_ydot.Ki);
+//            break;
+//
+//        case SIG_HOLO_Y_KD:
+//            sig_var = &(pid_vars_h_ydot.Kd);
+//            break;
+//
+//      // holonomic R PID
+//
+//        case SIG_HOLO_R_KP:
+//            sig_var = &(pid_vars_h_rdot.Kp);
+//            break;
+//
+//        case SIG_HOLO_R_KI:
+//            sig_var = &(pid_vars_h_rdot.Ki);
+//            break;
+//
+//        case SIG_HOLO_R_KD:
+//            sig_var = &(pid_vars_h_rdot.Kd);
+//            break;
+//      // Tests on command
+//        case -100:
+//            // Square Test
+//            square_test_did_start = true;
+//            break;
+//
+//        case -101:
+//            // Right Angle Test
+//            right_test_did_start = true;
+//            break;
+//
+//         case -102:
+//         //Circle Test
+//         circle_test_did_start = true;
+//         break;
+//
+//        case -103:
+//        //Spiral Test
+//        spiral_test_did_start = true;
+//        break;
+//
+//        case -104:
+//        //Sinusoid Test
+//        sine_test_did_start = true;
+//        break;
+//
+//        case -105:
+//        //Heading Circle
+//        heading_circle_test_did_start = true;
+//        break;
+//    }
+//      *sig_var = val.toFloat();
+//}
 
 int turret_tick_change; // For debugging purposes for sending through serial- you should delete this later
 
