@@ -264,7 +264,8 @@ void loop() {
             read_serial();
             compute_sensed_motor_velocities(); // read encoders
             calculate_sensed_drive_angle();
-            //send_basic_info();
+//            Serial.println(sensed_drive_angle * 360);
+//            send_msg(); 
             check_for_test_execution(); // takes care of drive demo test commands.TODO prevent this from running test if kill command was sent
 
             if (use_dif_drive) {
@@ -352,7 +353,12 @@ void calculate_sensed_drive_angle() {
     // When the HAMR first begins, it sets the current sensed angle as the
     // arbitrary 0.
     float ticks = TICKS_PER_REV_TURRET;
+    
     sensed_drive_angle = fmod(decoder_turret_total, ticks) / (float) ticks;
+    Serial.println(decoder_turret_total);
+    Serial.println(ticks);
+    float orig_ang = sensed_drive_angle;
+    
     if (sensed_drive_angle < 0) {
         sensed_drive_angle = 1 + sensed_drive_angle;
     } 
@@ -361,6 +367,14 @@ void calculate_sensed_drive_angle() {
         did_set_offset = true;
     }
     sensed_drive_angle = sensed_drive_angle - offset;
+//    Serial.println("==================================");
+//    Serial.println("Offset = ");
+//    Serial.println(offset);
+//    Serial.println("Original angle: ");
+//    Serial.println(orig_ang);
+//    Serial.println("Actual angle:");
+//    Serial.println(sensed_drive_angle * 360);
+//    Serial.println("==================================");
 }
 
 void set_speed_of_motors() {
@@ -422,17 +436,14 @@ void read_serial() {
         switch (type_representation) {
             // holonomic inputs
             case SIG_HOLO_X:
-                Serial.println("received x");
                 sig_var = &desired_h_xdot;
                 break;
 
             case SIG_HOLO_Y:
-            Serial.println("received y");
                 sig_var = &desired_h_ydot;
                 break;
 
             case SIG_HOLO_R:
-            Serial.println("received r");
                 sig_var = &desired_h_rdot;
                 break;
 
@@ -540,7 +551,9 @@ void read_serial() {
             case SIG_HOLO_R_KD:
                 sig_var = &(pid_vars_h_rdot.Kd);
                 break;
+                
           // Tests on command
+                
             case -100:
                 // Square Test
                 square_test_did_start = true;
@@ -572,7 +585,6 @@ void read_serial() {
                 break;
         }
         *sig_var = *((float*)(buf));
-        Serial.println("End");
     }
 }
 
@@ -745,10 +757,11 @@ void read_serial() {
 
 int turret_tick_change; // For debugging purposes for sending through serial- you should delete this later
 
-void send_basic_info() {
+void send_msg() {
   //Timestamp
 //  Serial.println(n/h.now());
   // Sensed Velocities
+//  raw_velocity_msg();
   hamr_state_msg();
 
 }
@@ -769,7 +782,7 @@ void raw_velocity_msg() {
   velocity_message += " dt";
   velocity_message += (int) (desired_MT_v * 1000);
   Serial.println(velocity_message);
-  
+    
 }
 
 void hamr_state_msg() {
@@ -781,7 +794,8 @@ void hamr_state_msg() {
   msg += String(" hx") + (int)(h_xdot_cmd * 1000);
   msg += String(" hy") + (int)(h_ydot_cmd * 1000);
   msg += String(" hr") + (int)(h_rdot_cmd * 1000);
-  msg += String(" sd") + (int)(sensed_drive_angle*360*1000);
+  msg += String(" sd") + (int)(sensed_drive_angle*360);
+//  Serial.println(sensed_drive_angle * 360);
   Serial.println(msg);
 }
 
