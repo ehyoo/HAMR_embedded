@@ -242,7 +242,6 @@ void setup() {
 //    nh.subscribe(sub);          // arduino node subscribes to topic declared
 //    nh.advertise(pub);          // advertise the topic 
 
-
     Serial.begin(57600);
     // pinMode(40, OUTPUT);     // LED Debugging purposes
     init_actuators();           // initialiaze all motors
@@ -256,49 +255,47 @@ void setup() {
 /*                                                 */
 /***************************************************/
 void loop() {
-    while (1) {
-        loop_time_duration = millis() - last_recorded_time;
-        if ((millis() - last_recorded_time) >= LOOPTIME) { // ensures stable loop time
-            time_elapsed = (float) (millis() - last_recorded_time);
-            last_recorded_time = millis();
-            read_serial();
-            compute_sensed_motor_velocities(); // read encoders
-            calculate_sensed_drive_angle();
-            //send_basic_info();
-            check_for_test_execution(); // takes care of drive demo test commands.TODO prevent this from running test if kill command was sent
+    loop_time_duration = millis() - last_recorded_time;
+    if ((millis() - last_recorded_time) >= LOOPTIME) { // ensures stable loop time
+        time_elapsed = (float) (millis() - last_recorded_time);
+        last_recorded_time = millis();
+        read_serial();
+        compute_sensed_motor_velocities(); // read encoders
+        calculate_sensed_drive_angle();
+        //send_basic_info();
+        check_for_test_execution(); // takes care of drive demo test commands.TODO prevent this from running test if kill command was sent
 
-            if (use_dif_drive) {
-                // NOTE: Differential drive is broken currently-
-                // giving T command, the whole body moves instead of the turret 
-                // TODO: Fix isolated differential drive
-                differential_drive();
-            } else if (use_holonomic_drive) {
-                holonomic_drive();
-            }
-            set_speed_of_motors();
+        if (use_dif_drive) {
+            // NOTE: Differential drive is broken currently-
+            // giving T command, the whole body moves instead of the turret 
+            // TODO: Fix isolated differential drive
+            differential_drive();
+        } else if (use_holonomic_drive) {
+            holonomic_drive();
         }
-
-        /* IMU Code */
-        // Since we don't have an IMU the code remains as it is from the original
-
-        //analogWrite(MT_PWM_PIN, 50);
-        // update_prevs();
-        //
-        //    if (next_sensor_time < micros() && is_imu_working()) {
-        //      unsigned long current_micros = micros();
-        //
-        //      compute_imu((current_micros - prev_micros) / 1000000.0); //update imu with time change
-        //
-        //      sensed_drive_angle = get_current_angle() * PI / 180;
-        //
-        //      next_sensor_time = micros() + SENSOR_LOOPTIME;
-        //      prev_micros = current_micros;
-        //
-        //      // potentially combine hamr_loc.theta with imu angle?
-        //    } else if (!is_imu_working()) {
-        //      sensed_drive_angle = hamr_loc.theta;
-        //    }
+        set_speed_of_motors();
     }
+
+    /* IMU Code */
+    // Since we don't have an IMU the code remains as it is from the original
+
+    //analogWrite(MT_PWM_PIN, 50);
+    // update_prevs();
+    //
+    //    if (next_sensor_time < micros() && is_imu_working()) {
+    //      unsigned long current_micros = micros();
+    //
+    //      compute_imu((current_micros - prev_micros) / 1000000.0); //update imu with time change
+    //
+    //      sensed_drive_angle = get_current_angle() * PI / 180;
+    //
+    //      next_sensor_time = micros() + SENSOR_LOOPTIME;
+    //      prev_micros = current_micros;
+    //
+    //      // potentially combine hamr_loc.theta with imu angle?
+    //    } else if (!is_imu_working()) {
+    //      sensed_drive_angle = hamr_loc.theta;
+    //    }
 }
 
 /************************/
@@ -396,43 +393,34 @@ void set_speed_of_motors() {
                         &pidError);
 }
 
+bool is_on = false;
+void toggle_led() {
+  is_on = !is_on;
+}
+
 /***********************/
 /*    ROS Functions    */
 /***********************/
 
-void read_serial() {
-    // called when message is sent to arduino
-    // matches the message type with each case and does its respective routine
-    // More often than not simply reassigning a variable.
-
-    // the HamrCommand msg is detailed as follows:
-    // string type (the type that corresponds to the switch cases)
-    // string val (the value of the float)
-    if (Serial.available()) {
-        String str;
-        float temp;
-        float* sig_var;
-        byte buf[4];
-        
-        int type_representation = Serial.read();
-        
-        Serial.readBytes(buf, 4);
-                
-
+void assign_vars(int type_representation, float value) {
+  float* sig_var;
         switch (type_representation) {
             // holonomic inputs
             case SIG_HOLO_X:
+                toggle_led();
                 Serial.println("received x");
                 sig_var = &desired_h_xdot;
                 break;
 
             case SIG_HOLO_Y:
-            Serial.println("received y");
+              Serial.println("received y");
+                toggle_led();
                 sig_var = &desired_h_ydot;
                 break;
 
             case SIG_HOLO_R:
             Serial.println("received r");
+                toggle_led();
                 sig_var = &desired_h_rdot;
                 break;
 
@@ -571,8 +559,35 @@ void read_serial() {
                 heading_circle_test_did_start = true;
                 break;
         }
-        *sig_var = *((float*)(buf));
-        Serial.println("End");
+        *sig_var = value;
+}
+
+void read_serial() {
+    char start;
+    // string val (the value of the float)
+    if (Serial.available()) {
+        String str;
+        float temp;
+        float* sig_var;
+        byte buf[4];
+        /* read data until it gets what it thinks is right */
+        for (int i = 0; i < 8; i++) {
+            // because pigeonhole principle
+            start = Serial.read();
+            if (start == START_MESSAGE) {
+              Serial.println("break");
+              break;      
+            }
+        }
+        if (start == START_MESSAGE) {
+            int type_representation = Serial.read();
+            Serial.readBytes(buf, 4);
+            int checksum = Serial.read();
+            if (checksum == CHECKSUM) {
+                assign_vars(type_representation, *((float*)(buf)));
+            }
+        }
+        Serial.println(start);
     }
 }
 

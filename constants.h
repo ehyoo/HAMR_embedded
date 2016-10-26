@@ -63,6 +63,10 @@
 
 #define SIG_MOVE_FALSE 'z'
 
+/* Message Start/End bytes */
+#define START_MESSAGE '#'
+#define CHECKSUM '/'
+
 
 /********************* *************************
  * Pin Definitions
