@@ -61,6 +61,8 @@
 #define SIG_HOLO_R_KI 'I'
 #define SIG_HOLO_R_KD 'O'
 
+#define MSG_REQUEST 'M'
+
 #define SIG_MOVE_FALSE 'z'
 
 /* Message Start/End bytes */
