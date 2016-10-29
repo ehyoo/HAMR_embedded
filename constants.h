@@ -19,6 +19,8 @@
 #define DIST_PER_REV          (PI*WHEEL_DIAMETER)     // circumference of wheel in meters
 #define LOOPTIME              10.0 // in ms
 
+// Message ID constants live in message_types.h
+
 // For live-plotting
 /* SIGNALS */
 #define SIG_START_STRING '$'

@@ -9,6 +9,12 @@
 // M1 => RIGHT MOTOR
 // M2 => LEFT MOTOR
 // MT => TURRET MOTOR
+
+#include <Wire.h> // I2C 
+#include <libas.h> // SSI Communication
+#include <SPI.h>
+#include <WiFi101.h>
+#include <WiFiUdp.h>
 #include "pid.h"
 #include "motor.h"
 #include "localize.h"
@@ -16,41 +22,10 @@
 #include "dd_control.h"
 #include "constants.h"
 #include "holonomic_control.h"
-#include <Wire.h> // I2C 
-#include <libas.h> // SSI Communication
+#include "message_types.h"
+#include "message_manager.h"
 
-/*******************************/
-/*   ROS Serial Communication  */
-/*******************************/
-// Message Importing
-//#include <ros.h>
-//#include <hamr_interface/HamrStatus.h>
-//#include <hamr_interface/MotorStatus.h>
-//#include <hamr_interface/HamrCommand.h>
-//#include <hamr_interface/HoloStatus.h>
-//#include <hamr_interface/VelocityStatus.h>
-//#include <ros/time.h>
 
-// Node and Publishing
-//ros::NodeHandle nh;
-//hamr_interface::HamrStatus hamrStatus;
-//hamr_interface::MotorStatus leftMotor;
-//hamr_interface::MotorStatus rightMotor;
-//hamr_interface::MotorStatus turretMotor;
-// By default, should publish to hamr_state topic
-// ros::Publisher pub("hamr_state", &hamrStatus);
-
-// Holonomic debugging 
-//hamr_interface::HoloStatus holoStatus;
-//ros::Publisher pub("holo_state", &holoStatus);
-
-// Turret Velocity debugging messages
-// hamr_interface::VelocityStatus velStatus;
-// ros::Publisher pub("vel_state", &velStatus);
-  
-// Subscribing
-//void command_callback(const hamr_interface::HamrCommand& command_msg);
-//ros::Subscriber<hamr_interface::HamrCommand> sub("hamr_command", &command_callback);
 
 /***************************************************/
 /*                                                 */
@@ -232,21 +207,40 @@ float pidError; // PID debugging for turret. See pid.h
 float dummy1 = 0;
 float dummy2 = 0;
 
+
+/***********************/
+/*         Wifi        */
+/***********************/
+int status = WL_IDLE_STATUS;
+char ssid[] = "Gumstix Modlab"; // network name
+char pass[] = "Modlab3142";
+unsigned int local_port = 2390; // arbitrary local port selected to listen on
+char packet_buffer[255]; // buffer to hold incoming packet
+WiFiUDP Udp;
+MESSAGE_MANAGER_t *msg_manager =(MESSAGE_MANAGER_t*)malloc(sizeof(MESSAGE_MANAGER_t)); // create message_manager
+
 /***************************************************/
 /*                                                 */
 /*                      SETUP                      */
 /*                                                 */
 /***************************************************/
 void setup() {
-//    nh.initNode();              // Initialize ros node
-//    nh.subscribe(sub);          // arduino node subscribes to topic declared
-//    nh.advertise(pub);          // advertise the topic 
-
     Serial.begin(57600);
-    // pinMode(40, OUTPUT);     // LED Debugging purposes
     init_actuators();           // initialiaze all motors
+    start_wifi();
     //init_I2C();               // initialize I2C bus as master
     start_time = millis();      // Start timer
+}
+
+void start_wifi() {
+  while (status != WL_CONNECTED) {
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
+    status = WiFi.begin(ssid, pass);
+    delay(5000); // wait 5 seconds for connection
+  }
+  Serial.println("Connected to wifi");
+  Udp.begin(local_port);
 }
 
 /***************************************************/
@@ -259,7 +253,18 @@ void loop() {
     if ((millis() - last_recorded_time) >= LOOPTIME) { // ensures stable loop time
         time_elapsed = (float) (millis() - last_recorded_time);
         last_recorded_time = millis();
-        read_serial();
+//        read_serial();
+        check_incoming_messages();
+
+    Serial.println("type:");
+    Serial.println(msg_manager->holo_vel_struct.type);
+    Serial.println("xdot:");
+    Serial.println(msg_manager->holo_vel_struct.x_dot);
+    Serial.println("ydot:");
+    Serial.println(msg_manager->holo_vel_struct.y_dot);
+    Serial.println("rdot:");
+    Serial.println(msg_manager->holo_vel_struct.r_dot);  
+    
         compute_sensed_motor_velocities(); // read encoders
         calculate_sensed_drive_angle();
         //send_basic_info();
@@ -415,195 +420,251 @@ void toggle_led() {
 /*    ROS Functions    */
 /***********************/
 
-void assign_vars(int type_representation, float value) {
-  float* sig_var;
-        switch (type_representation) {
-            // holonomic inputs
-            case SIG_HOLO_X:
-                toggle_led();
-                Serial.println("received x");
-                sig_var = &desired_h_xdot;
-                break;
-            case SIG_HOLO_Y:
-              Serial.println("received y");
-                toggle_led();
-                sig_var = &desired_h_ydot;
-                break;
+//void assign_vars(int type_representation, float value) {
+//  float* sig_var;
+//        switch (type_representation) {
+//            // holonomic inputs
+//            case SIG_HOLO_X:
+//                toggle_led();
+//                Serial.println("received x");
+//                sig_var = &desired_h_xdot;
+//                break;
+//            case SIG_HOLO_Y:
+//              Serial.println("received y");
+//                toggle_led();
+//                sig_var = &desired_h_ydot;
+//                break;
+//
+//            case SIG_HOLO_R:
+//            Serial.println("received r");
+//                toggle_led();
+//                sig_var = &desired_h_rdot;
+//                break;
+//
+//          // differential drive inputs
+//            case SIG_DD_V:
+//                sig_var = &desired_dd_v;
+//                break;
+//
+//            case SIG_DD_R:
+//                sig_var = &desired_dd_r;
+//                break;
+//
+//          // motor velocities
+//            case SIG_R_MOTOR:
+//                sig_var = &desired_M1_v;
+//                break;
+//
+//            case SIG_L_MOTOR:
+//                sig_var = &desired_M2_v;
+//                break;
+//
+//            case SIG_T_MOTOR:
+//                sig_var = &desired_MT_v;
+//                break;
+//
+//          // right motor PID
+//            case SIG_R_KP:
+//                sig_var = &(pid_vars_M1.Kp);
+//                break;
+//
+//            case SIG_R_KI:
+//                sig_var = &(pid_vars_M1.Ki);
+//                break;
+//
+//            case SIG_R_KD:
+//                sig_var = &(pid_vars_M1.Kd);
+//                break;
+//
+//          // left motor PID
+//            case SIG_L_KP:
+//                sig_var = &(pid_vars_M2.Kp);
+//                break;
+//
+//            case SIG_L_KI:
+//                sig_var = &(pid_vars_M2.Ki);
+//                break;
+//
+//            case SIG_L_KD:
+//                sig_var = &(pid_vars_M2.Kd);
+//                break;
+//
+//          // turret motor PID
+//            case SIG_T_KP:
+//                // sig_var = &(pid_vars_MT.Kp); 
+//                sig_var = &(dd_ctrl.Kp);
+//                break;
+//
+//            case SIG_T_KI:
+//                // sig_var = &(pid_vars_MT.Ki);
+//                sig_var = &(dd_ctrl.Ki);
+//                break;
+//
+//            case SIG_T_KD:
+//                // sig_var = &(pid_vars_MT.Kd);
+//                sig_var = &(dd_ctrl.Kd);
+//                break;
+//
+//          // holonomic X PID
+//            case SIG_HOLO_X_KP:
+//                sig_var = &(pid_vars_h_xdot.Kp);
+//                break;
+//
+//            case SIG_HOLO_X_KI:
+//                sig_var = &(pid_vars_h_xdot.Ki);
+//                break;
+//
+//            case SIG_HOLO_X_KD:
+//                sig_var = &(pid_vars_h_xdot.Kd);
+//                break;
+//
+//          // holonomic Y PID
+//
+//            case SIG_HOLO_Y_KP:
+//                sig_var = &(pid_vars_h_ydot.Kp);
+//                break;
+//
+//            case SIG_HOLO_Y_KI:
+//                sig_var = &(pid_vars_h_ydot.Ki);
+//                break;
+//
+//            case SIG_HOLO_Y_KD:
+//                sig_var = &(pid_vars_h_ydot.Kd);
+//                break;
+//
+//          // holonomic R PID
+//
+//            case SIG_HOLO_R_KP:
+//                sig_var = &(pid_vars_h_rdot.Kp);
+//                break;
+//
+//            case SIG_HOLO_R_KI:
+//                sig_var = &(pid_vars_h_rdot.Ki);
+//                break;
+//
+//            case SIG_HOLO_R_KD:
+//                sig_var = &(pid_vars_h_rdot.Kd);
+//                break;
+//                
+//          // Tests on command
+//                
+//            case -100:
+//                // Square Test
+//                square_test_did_start = true;
+//                break;
+//
+//            case -101:
+//                // Right Angle Test
+//                right_test_did_start = true;
+//                break;
+//
+//             case -102:
+//             //Circle Test
+//                 circle_test_did_start = true;
+//                 break;
+//
+//            case -103:
+//            //Spiral Test
+//                spiral_test_did_start = true;
+//                break;
+//
+//            case -104:
+//            //Sinusoid Test
+//                sine_test_did_start = true;
+//                break;
+//
+//            case -105:
+//            //Heading Circle
+//                heading_circle_test_did_start = true;
+//                break;
+//        }
+//        *sig_var = value;
+//}
+//
+//void read_serial() {
+//    char start;
+//    // string val (the value of the float)
+//    if (Serial.available()) {
+//        String str;
+//        float temp;
+//        float* sig_var;
+//        byte buf[4];
+//        /* read data until it gets what it thinks is right */
+//        for (int i = 0; i < 8; i++) {
+//            // because pigeonhole principle
+//            start = Serial.read();
+//            if (start == START_MESSAGE) {
+//              Serial.println("break");
+//              break;      
+//            }
+//        }
+//        if (start == START_MESSAGE) {
+//            int type_representation = Serial.read();
+//            Serial.readBytes(buf, 4);
+//            int checksum = Serial.read();
+//            if (checksum == CHECKSUM) {
+//                assign_vars(type_representation, *((float*)(buf)));
+//            }
+//        }
+//       
+//    }
+//}
 
-            case SIG_HOLO_R:
-            Serial.println("received r");
-                toggle_led();
-                sig_var = &desired_h_rdot;
-                break;
-
-          // differential drive inputs
-            case SIG_DD_V:
-                sig_var = &desired_dd_v;
-                break;
-
-            case SIG_DD_R:
-                sig_var = &desired_dd_r;
-                break;
-
-          // motor velocities
-            case SIG_R_MOTOR:
-                sig_var = &desired_M1_v;
-                break;
-
-            case SIG_L_MOTOR:
-                sig_var = &desired_M2_v;
-                break;
-
-            case SIG_T_MOTOR:
-                sig_var = &desired_MT_v;
-                break;
-
-          // right motor PID
-            case SIG_R_KP:
-                sig_var = &(pid_vars_M1.Kp);
-                break;
-
-            case SIG_R_KI:
-                sig_var = &(pid_vars_M1.Ki);
-                break;
-
-            case SIG_R_KD:
-                sig_var = &(pid_vars_M1.Kd);
-                break;
-
-          // left motor PID
-            case SIG_L_KP:
-                sig_var = &(pid_vars_M2.Kp);
-                break;
-
-            case SIG_L_KI:
-                sig_var = &(pid_vars_M2.Ki);
-                break;
-
-            case SIG_L_KD:
-                sig_var = &(pid_vars_M2.Kd);
-                break;
-
-          // turret motor PID
-            case SIG_T_KP:
-                // sig_var = &(pid_vars_MT.Kp); 
-                sig_var = &(dd_ctrl.Kp);
-                break;
-
-            case SIG_T_KI:
-                // sig_var = &(pid_vars_MT.Ki);
-                sig_var = &(dd_ctrl.Ki);
-                break;
-
-            case SIG_T_KD:
-                // sig_var = &(pid_vars_MT.Kd);
-                sig_var = &(dd_ctrl.Kd);
-                break;
-
-          // holonomic X PID
-            case SIG_HOLO_X_KP:
-                sig_var = &(pid_vars_h_xdot.Kp);
-                break;
-
-            case SIG_HOLO_X_KI:
-                sig_var = &(pid_vars_h_xdot.Ki);
-                break;
-
-            case SIG_HOLO_X_KD:
-                sig_var = &(pid_vars_h_xdot.Kd);
-                break;
-
-          // holonomic Y PID
-
-            case SIG_HOLO_Y_KP:
-                sig_var = &(pid_vars_h_ydot.Kp);
-                break;
-
-            case SIG_HOLO_Y_KI:
-                sig_var = &(pid_vars_h_ydot.Ki);
-                break;
-
-            case SIG_HOLO_Y_KD:
-                sig_var = &(pid_vars_h_ydot.Kd);
-                break;
-
-          // holonomic R PID
-
-            case SIG_HOLO_R_KP:
-                sig_var = &(pid_vars_h_rdot.Kp);
-                break;
-
-            case SIG_HOLO_R_KI:
-                sig_var = &(pid_vars_h_rdot.Ki);
-                break;
-
-            case SIG_HOLO_R_KD:
-                sig_var = &(pid_vars_h_rdot.Kd);
-                break;
-                
-          // Tests on command
-                
-            case -100:
-                // Square Test
-                square_test_did_start = true;
-                break;
-
-            case -101:
-                // Right Angle Test
-                right_test_did_start = true;
-                break;
-
-             case -102:
-             //Circle Test
-                 circle_test_did_start = true;
-                 break;
-
-            case -103:
-            //Spiral Test
-                spiral_test_did_start = true;
-                break;
-
-            case -104:
-            //Sinusoid Test
-                sine_test_did_start = true;
-                break;
-
-            case -105:
-            //Heading Circle
-                heading_circle_test_did_start = true;
-                break;
-        }
-        *sig_var = value;
+void check_incoming_messages() {
+    int packet_size = Udp.parsePacket();
+    if (packet_size) {
+      int len = Udp.read(packet_buffer, 255);
+      if (len > 0) {
+          packet_buffer[len] = 0;
+      }
+      handle_message(msg_manager, packet_buffer);
+    }    
 }
 
-void read_serial() {
-    char start;
-    // string val (the value of the float)
-    if (Serial.available()) {
-        String str;
-        float temp;
-        float* sig_var;
-        byte buf[4];
-        /* read data until it gets what it thinks is right */
-        for (int i = 0; i < 8; i++) {
-            // because pigeonhole principle
-            start = Serial.read();
-            if (start == START_MESSAGE) {
-              Serial.println("break");
-              break;      
-            }
+
+
+void handle_message(MESSAGE_MANAGER_t* msg_manager, char* val) {
+    uint8 msg_id = val[0];
+    switch (msg_id) {
+        case HolonomicVelocityMessage: {
+            HolonomicVelocity *msg = (HolonomicVelocity*) val;
+            msg_manager->holo_vel_struct = *msg;
+            break;
         }
-        if (start == START_MESSAGE) {
-            int type_representation = Serial.read();
-            Serial.readBytes(buf, 4);
-            int checksum = Serial.read();
-            if (checksum == CHECKSUM) {
-                assign_vars(type_representation, *((float*)(buf)));
-            }
-        }
-       
+
+      // Tests on command            
+        case -100:
+            // Square Test
+            square_test_did_start = true;
+            break;
+
+        case -101:
+            // Right Angle Test
+            right_test_did_start = true;
+            break;
+
+         case -102:
+         //Circle Test
+             circle_test_did_start = true;
+             break;
+
+        case -103:
+        //Spiral Test
+            spiral_test_did_start = true;
+            break;
+
+        case -104:
+        //Sinusoid Test
+            sine_test_did_start = true;
+            break;
+
+        case -105:
+        //Heading Circle
+            heading_circle_test_did_start = true;
+            break;
     }
 }
+
 
 
 //void command_callback(const hamr_interface::HamrCommand& command_msg) {
