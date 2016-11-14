@@ -225,12 +225,20 @@ MESSAGE_MANAGER_t *msg_manager =(MESSAGE_MANAGER_t*)malloc(sizeof(MESSAGE_MANAGE
 /*                                                 */
 /***************************************************/
 void setup() {
-    blink_times(4);
+    Serial.println("Blinking LED to check startup");
+    blink_times(2);
+    Serial.println("Setting up serial...");    
     Serial.begin(57600);
+    Serial.println("Done setting serial");
+    Serial.println("Setting up motors...");
     init_actuators();           // initialiaze all motors
+    Serial.println("Done setting motors");
+    Serial.println("Setting up Wifi...");
     start_wifi();
+    Serial.println("Done setting Wifi");
     //init_I2C();               // initialize I2C bus as master
     start_time = millis();      // Start timer
+    Serial.println("HAMR Ready!");
 }
 
 void start_wifi() {
@@ -238,11 +246,31 @@ void start_wifi() {
     Serial.print("Attempting to connect to SSID: ");
     Serial.println(ssid);
     status = WiFi.begin(ssid, pass);
-    delay(5000); // wait 5 seconds for connection
+    delay(3000); // wait 3 seconds for connection
   }
-  Serial.println("Connected to wifi");
+  Serial.println("Connected to wifi:");
+  print_wifi_status();
   Udp.begin(local_port);
 }
+
+
+void print_wifi_status() {
+  // print the SSID of the network you're attached to:
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+
+  // print your WiFi shield's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+
+  // print the received signal strength:
+  long rssi = WiFi.RSSI();
+  Serial.print("signal strength (RSSI):");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+}
+
 
 bool toggle = HIGH;
 void blink_times(int i) {
@@ -252,8 +280,6 @@ void blink_times(int i) {
     toggle = !toggle;
   }
 }
-
-
 
 /***************************************************/
 /*                                                 */
@@ -266,9 +292,16 @@ void loop() {
         time_elapsed = (float) (millis() - last_recorded_time);
         last_recorded_time = millis();
 //        read_serial();
-//        check_incoming_messages();
+        check_incoming_messages();
 
         compute_sensed_motor_velocities(); // read encoders
+            Serial.println("Desired X");
+            Serial.println(desired_h_xdot);
+            Serial.println("Desired y");
+            Serial.println(desired_h_ydot);
+            Serial.println("Desired r");
+            Serial.println(desired_h_rdot);
+        
         calculate_sensed_drive_angle();
         //send_basic_info();
         check_for_test_execution(); // takes care of drive demo test commands.TODO prevent this from running test if kill command was sent
@@ -359,8 +392,6 @@ void calculate_sensed_drive_angle() {
     float ticks = TICKS_PER_REV_TURRET;
     
     sensed_drive_angle = fmod(decoder_turret_total, ticks) / (float) ticks;
-    Serial.println(decoder_turret_total);
-    Serial.println(ticks);
     float orig_ang = sensed_drive_angle;
     
     if (sensed_drive_angle < 0) {
@@ -631,8 +662,12 @@ void handle_message(MESSAGE_MANAGER_t* msg_manager, char* val) {
     uint8 msg_id = val[0];
     switch (msg_id) {
         case HolonomicVelocityMessage: {
+            Serial.println("Received Holonomic Message");
             HolonomicVelocity *msg = (HolonomicVelocity*) val;
             msg_manager->holo_vel_struct = *msg;
+            desired_h_xdot = msg_manager->holo_vel_struct.x_dot;
+            desired_h_ydot = msg_manager->holo_vel_struct.y_dot;
+            desired_h_rdot = msg_manager->holo_vel_struct.r_dot;
             break;
         }
 
