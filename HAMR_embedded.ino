@@ -189,9 +189,9 @@ float prev_sensed_velocity_right;
 float prev_sensed_velocity_left;
 float prev_sensed_velocity_turret;
 // Instantiated objects for SSI communication using the libas library
-libas libas_M1(30, 32, 28, 12);
-libas libas_M2(24, 26, 22, 12);
-libas libas_MT(38, 34, 36, 10);
+libas libas_M1(1, 2, 3, 4);
+libas libas_M2(5, 6, 7, 8);
+libas libas_MT(9, 10, 11, 12);
 
 /***********************/
 /*    Miscellaneous    */
@@ -225,10 +225,7 @@ MESSAGE_MANAGER_t *msg_manager =(MESSAGE_MANAGER_t*)malloc(sizeof(MESSAGE_MANAGE
 /*                                                 */
 /***************************************************/
 void setup() {
-  
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(5000);
-    digitalWrite(LED_BUILTIN, LOW);
+    blink_times(4);
     Serial.begin(57600);
     init_actuators();           // initialiaze all motors
     start_wifi();
@@ -246,6 +243,17 @@ void start_wifi() {
   Serial.println("Connected to wifi");
   Udp.begin(local_port);
 }
+
+bool toggle = HIGH;
+void blink_times(int i) {
+  for (int j = 0; j < i*2; j++) {
+    digitalWrite(LED_BUILTIN, toggle);
+    delay(500);
+    toggle = !toggle;
+  }
+}
+
+
 
 /***************************************************/
 /*                                                 */
