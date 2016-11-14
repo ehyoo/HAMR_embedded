@@ -8,3 +8,4 @@ typedef struct __attribute__ ((__packed__)) {
 } MESSAGE_MANAGER_t;
 
 #endif
+

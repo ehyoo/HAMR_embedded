@@ -225,6 +225,10 @@ MESSAGE_MANAGER_t *msg_manager =(MESSAGE_MANAGER_t*)malloc(sizeof(MESSAGE_MANAGE
 /*                                                 */
 /***************************************************/
 void setup() {
+  
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(5000);
+    digitalWrite(LED_BUILTIN, LOW);
     Serial.begin(57600);
     init_actuators();           // initialiaze all motors
     start_wifi();
@@ -254,17 +258,8 @@ void loop() {
         time_elapsed = (float) (millis() - last_recorded_time);
         last_recorded_time = millis();
 //        read_serial();
-        check_incoming_messages();
+//        check_incoming_messages();
 
-    Serial.println("type:");
-    Serial.println(msg_manager->holo_vel_struct.type);
-    Serial.println("xdot:");
-    Serial.println(msg_manager->holo_vel_struct.x_dot);
-    Serial.println("ydot:");
-    Serial.println(msg_manager->holo_vel_struct.y_dot);
-    Serial.println("rdot:");
-    Serial.println(msg_manager->holo_vel_struct.r_dot);  
-    
         compute_sensed_motor_velocities(); // read encoders
         calculate_sensed_drive_angle();
         //send_basic_info();
@@ -411,10 +406,11 @@ void set_speed_of_motors() {
                         &pidError);
 }
 
-bool is_on = false;
-void toggle_led() {
-  is_on = !is_on;
-}
+//bool is_on = false;
+//void toggle_led() {
+//  is_on = !is_on;
+//  
+//}
 
 /***********************/
 /*    ROS Functions    */
