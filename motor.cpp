@@ -77,15 +77,18 @@ void set_speed_of_turret(PID_Vars* pid,
     analogWrite(pin_pwm, abs(*pwm_val));
 } 
 
-
+/**
+ * Calculates speed from encode counts
+ * 
+ * @param difference Difference between the previous and current encoder counts
+ * @param ticks_per_rev Number of encoder counts per revolution
+ * @param time_elapsed Time in miliseconds
+ * @returns Speed from the readings. 
+ */
 float get_speed_from_difference(long difference,
                                 float ticks_per_rev, 
                                 float dist_per_rev, 
                                 float time_elapsed) {
-    // Calculates speed from encoder counts
-    // difference: difference between previous and current encoder counts
-    // ticks_per_rev: number of encoder counts per revolution
-    // time_elapsed: time in milliseconds
     return ((((float) difference) / ticks_per_rev) * dist_per_rev) / (time_elapsed / 1000.0);
 }
 

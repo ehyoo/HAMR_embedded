@@ -11,7 +11,8 @@
 // MT => TURRET MOTOR
 
 #include <Wire.h> // I2C 
-#include <libas.h> // SSI Communication
+///#include <libas.h> // SSI Communication
+#include <AS5048A.h>
 #include <SPI.h>
 #include <WiFi101.h>
 #include <WiFiUdp.h>
@@ -199,10 +200,9 @@ bool use_holonomic_drive = true; // Full fledged holonomic drive
 float prev_sensed_velocity_right;
 float prev_sensed_velocity_left;
 float prev_sensed_velocity_turret;
-// Instantiated objects for SSI communication using the libas library
-//libas libas_M1(1, 2, 3, 4);
-//libas libas_M2(5, 6, 7, 8);
-//libas libas_MT(9, 10, 11, 12);
+AS5048A angle_sensor_M1(0);
+AS5048A angle_sensor_M2(1);
+AS5048A angle_sensor_MT(2);
 
 /***********************/
 /*    Miscellaneous    */
@@ -306,13 +306,6 @@ void loop() {
         check_incoming_messages();
 
         compute_sensed_motor_velocities(); // read encoders
-            Serial.println("Desired X");
-            Serial.println(desired_h_xdot);
-            Serial.println("Desired y");
-            Serial.println(desired_h_ydot);
-            Serial.println("Desired r");
-            Serial.println(desired_h_rdot);
-        
         calculate_sensed_drive_angle();
         //send_basic_info();
         check_for_test_execution(); // takes care of drive demo test commands.TODO prevent this from running test if kill command was sent
@@ -1011,16 +1004,18 @@ void init_actuators() {
 void compute_sensed_motor_velocities() {
     // Gets the current position, calculates velocity from current and previous
     
-    // Read encoders 
-    read_encoders();
-    decoder_count_M1 = isrPulsewidth1;
-    decoder_count_M2 = isrPulsewidth2;
-    decoder_count_MT = isrPulsewidth3;
-    
+    // Read encoders
+    decoder_count_M1 = angle_sensor_M1.getRawRotation();
+    decoder_count_M2 = angle_sensor_M2.getRawRotation();
+    decoder_count_MT = angle_sensor_MT.getRawRotation();
+    Serial.println(decoder_count_M1);
+    Serial.println(decoder_count_M2);
+    Serial.println(decoder_count_MT);
+        
     // Calculating the difference between prev and current sensed positions
-    float decoder_count_change_M1 = calculate_decoder_count_change(decoder_count_M1_prev, decoder_count_M1, 4095, 500, 3500);
-    float decoder_count_change_M2 = calculate_decoder_count_change(decoder_count_M2_prev, decoder_count_M2, 4095, 500, 3500);
-    float decoder_count_change_MT = calculate_decoder_count_change(decoder_count_MT_prev, decoder_count_MT, 1023, 300, 700);
+    float decoder_count_change_M1 = calculate_decoder_count_change(decoder_count_M1_prev, decoder_count_M1, 16383, 1600, 14000);
+    float decoder_count_change_M2 = calculate_decoder_count_change(decoder_count_M2_prev, decoder_count_M2, 16383, 1600, 14000);
+    float decoder_count_change_MT = calculate_decoder_count_change(decoder_count_MT_prev, decoder_count_MT, 16383, 1600, 14000);
 
     // Puts change into the total so we know the drive angle of turret
     decoder_turret_total -= decoder_count_change_MT;
@@ -1089,20 +1084,19 @@ float compute_avg(float* arr, int sz) {
     return sum / (float) sz;
 }
 
+/**
+ * Calculates the difference of ticks between previously sensed and currently sensed readings. Also considers the 
+ * case when there is an overflow between readings (ie, encoder reads 4090, moves forward, then reads 2 at time t+1)
+ * 
+ * @param prev Previously sensed value
+ * @param current Currently sensed value
+ * @param max The encoder's max reading
+ * @param lim_min Desired floor at which you determine there has been an overflow
+ * @param lim_max Desired ceiling at which you determine that there has been an overflow.
+ * @returns The absolute change between the prev and current values.
+ */
 float calculate_decoder_count_change(
     int prev, int current, int max, int lim_min, int lim_max) {
-    /*
-    prev: previously sensed
-    current: currently sensed
-    max: encoder max reading
-    lim_min and lim_max: desired floor and ceiling at which you determine that 
-    there has been an overflow.
-
-    Calculates the difference of ticks between previously sensed and currently 
-    sensed. Takes into consideration if there has been an overflow between
-    readings (ie, encoder reads 4090 at time t, moves forward, then reads
-    3 at time t+1)
-    */
     if (prev > lim_max && current < lim_min) {
         return max - prev + current;
     } else if (prev < lim_min && current > lim_max) {
@@ -1420,159 +1414,3 @@ int adjust_speed(int pwm, int desired) {
     }
     return pwm;
 }
-
-/* Clock Setup */
-void init_clocks() {
-  SerialUSB.println("setup clocks...");
-    REG_PM_APBCMASK |= PM_APBCMASK_EVSYS;           // Switch on the event system peripheral
-  
-  REG_GCLK_GENDIV = GCLK_GENDIV_DIV(3) |            // Divide the 48MHz system clock by 3 = 16MHz
-                    GCLK_GENDIV_ID(5);              // Set division on Generic Clock Generator (GCLK) 5
-  SerialUSB.println("setting up gen clock..");
-  while (GCLK->STATUS.bit.SYNCBUSY);                // Wait for synchronization
- SerialUSB.println("setting up gen clock..");
-  REG_GCLK_GENCTRL = GCLK_GENCTRL_IDC |             // Set the duty cycle to 50/50 HIGH/LOW
-                     GCLK_GENCTRL_GENEN |           // Enable GCLK 5
-                     GCLK_GENCTRL_SRC_DFLL48M |     // Set the clock source to 48MHz 
-                     GCLK_GENCTRL_ID(5);            // Set clock source on GCLK 5
-                     
-  while (GCLK->STATUS.bit.SYNCBUSY);                // Wait for synchronization*/
- SerialUSB.println("feeding clocks..");
-  REG_GCLK_CLKCTRL = GCLK_CLKCTRL_CLKEN |           // Enable the generic clock...
-                     GCLK_CLKCTRL_GEN_GCLK5 |       // ....on GCLK5
-                     GCLK_CLKCTRL_ID_TC4_TC5;       // Feed the GCLK5 to TC4 and TC5
-                    // |GCLK_CLKCTRL_ID_TCC2_TC3;   
-  while (GCLK->STATUS.bit.SYNCBUSY);                // Wait for synchronization
- SerialUSB.println("setting extint..");
-
- SerialUSB.println("feeding clocks..");
-  REG_GCLK_CLKCTRL = GCLK_CLKCTRL_CLKEN |           // Enable the generic clock...
-                     GCLK_CLKCTRL_GEN_GCLK5 |       // ....on GCLK5
-                     GCLK_CLKCTRL_ID_TCC2_TC3;      
-  while (GCLK->STATUS.bit.SYNCBUSY);                // Wait for synchronization
- 
-  REG_EIC_EVCTRL |= EIC_EVCTRL_EXTINTEO2;           // Enable event output on external interrupt 2 used iwth TC5
-  attachInterrupt(A1, NULL, HIGH);                  // Attach interrupts to digital pin (external interrupt 4)
-
-  REG_EIC_EVCTRL |= EIC_EVCTRL_EXTINTEO4;           // Enable event output on external interrupt 4 to be used with TC4
-  attachInterrupt(6, NULL, HIGH);       
-
-  REG_EIC_EVCTRL |= EIC_EVCTRL_EXTINTEO3;           // Enable event output on external interrupt 3 to be used with TC3
-  attachInterrupt(A2, NULL, HIGH);                  // Attach interrupts to digital pin A2 (external interrupt 3).#andrew:for some reason we need this line...
-  
-//interrupt controller to be configured first. Refer to Nested Vector Interrupt Controller for details
-// TODO: do i need to use different user channels? i think so. i think the event user and channel system is global so i only have 12 channels for the whol processor.
- SerialUSB.println("setting event system..");
-  REG_EVSYS_USER = EVSYS_USER_CHANNEL(1) |                                // Attach the event user (receiver) to channel 0 (n + 1)
-                   EVSYS_USER_USER(EVSYS_ID_USER_TC5_EVU);                // Set the event user (receiver) as timer TC5
-  REG_EVSYS_USER = EVSYS_USER_CHANNEL(2) |                                // Attach the event user (receiver) to channel 1 (n + 1)
-                   EVSYS_USER_USER(EVSYS_ID_USER_TC4_EVU);                // Set the event user (receiver) as timer TC4
-  REG_EVSYS_USER = EVSYS_USER_CHANNEL(3) |                                // Attach the event user (receiver) to channel 2 (n + 1)
-                   EVSYS_USER_USER(EVSYS_ID_USER_TC3_EVU);                // Set the event user (receiver) as timer TC3
-
- SerialUSB.println("setting up channel..");
-  REG_EVSYS_CHANNEL = EVSYS_CHANNEL_EDGSEL_NO_EVT_OUTPUT |                // No event edge detection
-                      EVSYS_CHANNEL_PATH_ASYNCHRONOUS |                   // Set event path as asynchronous
-                      EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_EIC_EXTINT_2) |    // Set event generator (sender) as external interrupt 4
-                      EVSYS_CHANNEL_CHANNEL(0);
-                      
-  REG_EVSYS_CHANNEL =  EVSYS_CHANNEL_EDGSEL_NO_EVT_OUTPUT |               // No event edge detection
-                      EVSYS_CHANNEL_PATH_ASYNCHRONOUS |                   // Set event path as asynchronous
-                      EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_EIC_EXTINT_4) |    // Set event generator (sender) as external interrupt 4
-                      EVSYS_CHANNEL_CHANNEL(1);
-//                     
-  REG_EVSYS_CHANNEL = EVSYS_CHANNEL_EDGSEL_NO_EVT_OUTPUT |                // No event edge detection
-                      EVSYS_CHANNEL_PATH_ASYNCHRONOUS |                   // Set event path as asynchronous
-                      EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_EIC_EXTINT_3) |    // Set event generator (sender) as external interrupt 4
-                      EVSYS_CHANNEL_CHANNEL(2);                           // Attach the generator (sender) to channel 0 use 1 and 2 for setting the other generators
-
-//
- SerialUSB.println("setting up input capture..");
-  REG_TC5_EVCTRL |= TC_EVCTRL_TCEI |              // Enable the TC event input
-                    TC_EVCTRL_EVACT_PPW;          // Set up the timer for capture: CC0 period, CC1 pulsewidth
-  REG_TC4_EVCTRL |= TC_EVCTRL_TCEI |              // Enable the TC event input
-                    TC_EVCTRL_EVACT_PPW;          // Set up the timer for capture: CC0 period, CC1 pulsewidth                  
-  REG_TC3_EVCTRL |= TC_EVCTRL_TCEI |              // Enable the TC event input
-                    TC_EVCTRL_EVACT_PPW;          // Set up the timer for capture: CC0 period, CC1 pulsewidth
-//    
-  SerialUSB.println("setting up T5..");                                   
-  REG_TC5_READREQ = TC_READREQ_RREQ |             // Enable a read request
-                    TC_READREQ_ADDR(0x06);        // Offset of the CTRLC register
-  SerialUSB.println("read sync...");                                   
-
-  while (TC5->COUNT16.STATUS.bit.SYNCBUSY);       // Wait for (read) synchronization
-  REG_TC5_CTRLC |= TC_CTRLC_CPTEN1 |              // Enable capture on CC1
-                   TC_CTRLC_CPTEN0;               // Enable capture on CC0. 
-  SerialUSB.println("write sync...");                                   
-
-  while (TC5->COUNT16.STATUS.bit.SYNCBUSY);       // Wait for (write) synchronization
-  
-  REG_TC5_CTRLA |= TC_CTRLA_PRESCALER_DIV16 |     // Set prescaler to 16, 16MHz/16 = 1MHz
-                   TC_CTRLA_ENABLE;               // Enable TC5
-  SerialUSB.println("enable sync");                                   
-
-  while (TC5->COUNT16.STATUS.bit.SYNCBUSY);       // Wait for synchronization
-  // finish setting up TC4
-   SerialUSB.println("setting up T4..");                                   
-
-  REG_TC4_READREQ = TC_READREQ_RREQ |             // Enable a read request
-                    TC_READREQ_ADDR(0x06);        // Offset of the CTRLC register
-  while (TC4->COUNT16.STATUS.bit.SYNCBUSY);       // Wait for (read) synchronization
-  REG_TC4_CTRLC |= TC_CTRLC_CPTEN1 |              // Enable capture on CC1
-                   TC_CTRLC_CPTEN0;               // Enable capture on CC0. 
-  while (TC4->COUNT16.STATUS.bit.SYNCBUSY);       // Wait for (write) synchronization
-  
-  REG_TC4_CTRLA |= TC_CTRLA_PRESCALER_DIV16 |     // Set prescaler to 16, 16MHz/16 = 1MHz
-                   TC_CTRLA_ENABLE;               // Enable TC4
-  while (TC4->COUNT16.STATUS.bit.SYNCBUSY);       // Wait for synchronization
-  //finish setting up TC3
-   SerialUSB.println("setting up T3..");                                   
-
-  REG_TC3_READREQ = TC_READREQ_RREQ |             // Enable a read request
-                    TC_READREQ_ADDR(0x06);        // Offset of the CTRLC register
-  while (TC3->COUNT16.STATUS.bit.SYNCBUSY);       // Wait for (read) synchronization
-  REG_TC3_CTRLC |= TC_CTRLC_CPTEN1 |              // Enable capture on CC1
-                   TC_CTRLC_CPTEN0;               // Enable capture on CC0. 
-  while (TC3->COUNT16.STATUS.bit.SYNCBUSY);       // Wait for (write) synchronization
-  
-  REG_TC3_CTRLA |= TC_CTRLA_PRESCALER_DIV16 |     // Set prescaler to 16, 16MHz/16 = 1MHz
-                   TC_CTRLA_ENABLE;               // Enable TC3
-  while (TC3->COUNT16.STATUS.bit.SYNCBUSY);       // Wait for synchronization  
-
-//
-  SerialUSB.println("setup complete");
-}
-
-void read_encoders() {
-    REG_TC5_READREQ = TC_READREQ_RREQ |           // Enable a read request
-                      TC_READREQ_ADDR(0x18);      // Offset address of the CC0 register. need to find the addresses for all
-
-    while (TC5->COUNT16.STATUS.bit.SYNCBUSY);     // Wait for (read) synchronization
-    isrPeriod1 = REG_TC5_COUNT16_CC0;              // Copy the period
-
-    REG_TC5_READREQ = TC_READREQ_RREQ |           // Enable a read request
-                      TC_READREQ_ADDR(0x1A);      // Offset address of the CC1 register
-    while (TC5->COUNT16.STATUS.bit.SYNCBUSY);     // Wait for (read) synchronization
-    isrPulsewidth1 = REG_TC5_COUNT16_CC1;          // Copy the pulse-width
-//
-//    
-    REG_TC4_READREQ = TC_READREQ_RREQ |           // Enable a read request
-                      TC_READREQ_ADDR(0x18);      // Offset address of the CC0 register. need to find the addresses for all
-
-    while (TC4->COUNT16.STATUS.bit.SYNCBUSY);     // Wait for (read) synchronization
-    isrPeriod2 = REG_TC4_COUNT16_CC0;              // Copy the period
-
-    REG_TC4_READREQ = TC_READREQ_RREQ |           // Enable a read request
-                      TC_READREQ_ADDR(0x1A);      // Offset address of the CC1 register
-    while (TC4->COUNT16.STATUS.bit.SYNCBUSY);     // Wait for (read) synchronization
-    isrPulsewidth2 = REG_TC4_COUNT16_CC1;          // Copy the pulse-width
-
-    while (TC3->COUNT16.STATUS.bit.SYNCBUSY);     // Wait for (read) synchronization
-    isrPeriod3 = REG_TC3_COUNT16_CC0;              // Copy the period
-
-    REG_TC3_READREQ = TC_READREQ_RREQ |           // Enable a read request
-                      TC_READREQ_ADDR(0x1A);      // Offset address of the CC1 register
-    while (TC3->COUNT16.STATUS.bit.SYNCBUSY);     // Wait for (read) synchronization
-    isrPulsewidth3 = REG_TC3_COUNT16_CC1;          // Copy the pulse-width
-}
-
