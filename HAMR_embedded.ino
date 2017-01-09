@@ -200,9 +200,9 @@ bool use_holonomic_drive = true; // Full fledged holonomic drive
 float prev_sensed_velocity_right;
 float prev_sensed_velocity_left;
 float prev_sensed_velocity_turret;
-AS5048A angle_sensor_M1(0);
-AS5048A angle_sensor_M2(1);
-AS5048A angle_sensor_MT(2);
+AS5048A angle_sensor_M1(11);
+AS5048A angle_sensor_M2(7);
+AS5048A angle_sensor_MT(6);
 
 /***********************/
 /*    Miscellaneous    */
@@ -249,6 +249,14 @@ void setup() {
     Serial.println("Done setting Wifi");
     //init_I2C();               // initialize I2C bus as master
     start_time = millis();      // Start timer
+    // input reading setup
+    Serial.println("Initializing the sensors");
+    angle_sensor_M1.init();
+    angle_sensor_M1.close();// close after each init to allow spi to start again
+    angle_sensor_M2.init();// i made the clock 10Mhz. it was 1Mhz to star
+    angle_sensor_M2.close();// close after each init to allow spi to start again
+    angle_sensor_MT.init();// i made the clock 10Mhz. it was 1Mhz to star
+    Serial.println("Done initializing the sensors.");
     Serial.println("HAMR Ready!");
 }
 
@@ -263,6 +271,19 @@ void start_wifi() {
   print_wifi_status();
   Udp.begin(local_port);
 }
+
+
+//void start_wifi() {
+//  while (status != WL_CONNECTED) {
+//    Serial.print("Attempting to connect to SSID: ");
+//    Serial.println(ssid);
+//    status = WiFi.begin(ssid, pass);
+//    delay(3000); // wait 3 seconds for connection
+//  }
+//  Serial.println("Connected to wifi:");
+//  print_wifi_status();
+//  Udp.begin(local_port);
+//}
 
 
 void print_wifi_status() {
@@ -309,7 +330,25 @@ void loop() {
         calculate_sensed_drive_angle();
         //send_basic_info();
         check_for_test_execution(); // takes care of drive demo test commands.TODO prevent this from running test if kill command was sent
-
+        Serial.println("==============================================");
+        Serial.println("DESIRED XYR DOT");
+        Serial.println("M1: " + String(desired_h_xdot ));
+        Serial.println("M2: " + String(desired_h_ydot ));
+        Serial.println("MT: " + String(desired_h_rdot));
+        Serial.println("DESIRED MOTOR VELOCITIES");
+        Serial.println("M1: " + String(desired_M1_v));
+        Serial.println("M2: " + String(desired_M2_v));
+        Serial.println("MT: " + String(desired_MT_v));
+        Serial.println("ACTUAL MOTOR VELOCITIES");
+        Serial.println("M1: " + String(sensed_M1_v));
+        Serial.println("M2: " + String(sensed_M2_v));
+        Serial.println("MT: " + String(sensed_MT_v));
+        Serial.println("PID ERRORS");
+        Serial.println("M1: " + String(pid_vars_M1.error_acc));
+        Serial.println("M2: " + String(pid_vars_M1.error_acc));
+        Serial.println("MT: " + String(pid_vars_MT.error_acc));
+        Serial.println("==============================================");
+  
         if (use_dif_drive) {
             // NOTE: Differential drive is broken currently-
             // giving T command, the whole body moves instead of the turret 
@@ -656,6 +695,7 @@ void check_incoming_messages() {
       if (len > 0) {
           packet_buffer[len] = 0;
       }
+      Serial.println("message received");
       handle_message(msg_manager, packet_buffer);
     }    
 }
@@ -666,7 +706,7 @@ void handle_message(MESSAGE_MANAGER_t* msg_manager, char* val) {
     uint8 msg_id = val[0];
     switch (msg_id) {
         case HolonomicVelocityMessage: {
-            Serial.println("Received Holonomic Message");
+            Serial.println("it was a holonomic message");
             HolonomicVelocity *msg = (HolonomicVelocity*) val;
             msg_manager->holo_vel_struct = *msg;
             desired_h_xdot = msg_manager->holo_vel_struct.x_dot;
@@ -704,6 +744,10 @@ void handle_message(MESSAGE_MANAGER_t* msg_manager, char* val) {
         case -105:
         //Heading Circle
             heading_circle_test_did_start = true;
+            break;
+            
+        default:
+            Serial.println("it's something at least");
             break;
     }
 }
@@ -1003,15 +1047,15 @@ void init_actuators() {
 
 void compute_sensed_motor_velocities() {
     // Gets the current position, calculates velocity from current and previous
-    
-    // Read encoders
-    decoder_count_M1 = angle_sensor_M1.getRawRotation();
-    decoder_count_M2 = angle_sensor_M2.getRawRotation();
-    decoder_count_MT = angle_sensor_MT.getRawRotation();
-    Serial.println(decoder_count_M1);
-    Serial.println(decoder_count_M2);
-    Serial.println(decoder_count_MT);
-        
+
+    decoder_count_M1 = (int) angle_sensor_M1.getRawRotation();
+    decoder_count_M2 = (int) angle_sensor_M2.getRawRotation();
+    decoder_count_MT = (int) angle_sensor_MT.getRawRotation();
+
+    angle_sensor_M1.getErrors();
+    angle_sensor_M2.getErrors();
+    angle_sensor_MT.getErrors();
+
     // Calculating the difference between prev and current sensed positions
     float decoder_count_change_M1 = calculate_decoder_count_change(decoder_count_M1_prev, decoder_count_M1, 16383, 1600, 14000);
     float decoder_count_change_M2 = calculate_decoder_count_change(decoder_count_M2_prev, decoder_count_M2, 16383, 1600, 14000);

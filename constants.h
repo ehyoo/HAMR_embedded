@@ -80,18 +80,18 @@
  * MT = Turret motor
  **********************************************/
 /* Motor Driver Pinouts */
-#define M1_PWM_PIN A4
-#define M1_DIR_PIN 4
+#define M1_PWM_PIN 5
+#define M1_DIR_PIN 0
 // #define M1_SLP_PIN 45
 // #define M1_FLT_PIN 47
 
-#define M2_PWM_PIN 7
-#define M2_DIR_PIN 6
+#define M2_PWM_PIN 4
+#define M2_DIR_PIN 1
 // #define M2_SLP_PIN 51
 // #define M2_FLT_PIN 53
 
-#define MT_PWM_PIN 8
-#define MT_DIR_PIN 13
+#define MT_PWM_PIN 3
+#define MT_DIR_PIN 2
 // #define MT_SLP_PIN 39
 // #define MT_FLT_PIN 41
 
