@@ -223,8 +223,10 @@ float dummy2 = 0;
 /*         Wifi        */
 /***********************/
 int status = WL_IDLE_STATUS;
-char ssid[] = "Gumstix Modlab"; // network name
-char pass[] = "Modlab3142";
+char ssid[] = "HAMR_Connect"; // network name
+char pass[] = "1231231234"; // Needed only for WEP.
+int keyIndex = 0;
+WiFiServer server(80);
 unsigned int local_port = 2390; // arbitrary local port selected to listen on
 char packet_buffer[255]; // buffer to hold incoming packet
 WiFiUDP Udp;
@@ -261,30 +263,22 @@ void setup() {
 }
 
 void start_wifi() {
-  while (status != WL_CONNECTED) {
-    Serial.print("Attempting to connect to SSID: ");
-    Serial.println(ssid);
-    status = WiFi.begin(ssid, pass);
-    delay(3000); // wait 3 seconds for connection
+  if (WiFi.status() == WL_NO_SHIELD) {
+    Serial.println("WiFi Shield is not detected- check if correct Arduino is being used and/or WiFi shield connections");
+    while (true);
   }
-  Serial.println("Connected to wifi:");
+  Serial.println("Creating access point named:");
+  Serial.println(ssid);
+  status = WiFi.beginAP(ssid, keyIndex, pass);
+  if (status != WL_AP_LISTENING) {
+    Serial.println("Creating the access point failed.");
+    while (true);
+  }
+  delay(5000);
+  server.begin();
   print_wifi_status();
   Udp.begin(local_port);
 }
-
-
-//void start_wifi() {
-//  while (status != WL_CONNECTED) {
-//    Serial.print("Attempting to connect to SSID: ");
-//    Serial.println(ssid);
-//    status = WiFi.begin(ssid, pass);
-//    delay(3000); // wait 3 seconds for connection
-//  }
-//  Serial.println("Connected to wifi:");
-//  print_wifi_status();
-//  Udp.begin(local_port);
-//}
-
 
 void print_wifi_status() {
   // print the SSID of the network you're attached to:
@@ -302,7 +296,6 @@ void print_wifi_status() {
   Serial.print(rssi);
   Serial.println(" dBm");
 }
-
 
 bool toggle = HIGH;
 void blink_times(int i) {
@@ -324,30 +317,30 @@ void loop() {
         time_elapsed = (float) (millis() - last_recorded_time);
         last_recorded_time = millis();
 //        read_serial();
+        check_wifi_status();
         check_incoming_messages();
-
         compute_sensed_motor_velocities(); // read encoders
         calculate_sensed_drive_angle();
         //send_basic_info();
         check_for_test_execution(); // takes care of drive demo test commands.TODO prevent this from running test if kill command was sent
-        Serial.println("==============================================");
-        Serial.println("DESIRED XYR DOT");
-        Serial.println("M1: " + String(desired_h_xdot ));
-        Serial.println("M2: " + String(desired_h_ydot ));
-        Serial.println("MT: " + String(desired_h_rdot));
-        Serial.println("DESIRED MOTOR VELOCITIES");
-        Serial.println("M1: " + String(desired_M1_v));
-        Serial.println("M2: " + String(desired_M2_v));
-        Serial.println("MT: " + String(desired_MT_v));
-        Serial.println("ACTUAL MOTOR VELOCITIES");
-        Serial.println("M1: " + String(sensed_M1_v));
-        Serial.println("M2: " + String(sensed_M2_v));
-        Serial.println("MT: " + String(sensed_MT_v));
-        Serial.println("PID ERRORS");
-        Serial.println("M1: " + String(pid_vars_M1.error_acc));
-        Serial.println("M2: " + String(pid_vars_M1.error_acc));
-        Serial.println("MT: " + String(pid_vars_MT.error_acc));
-        Serial.println("==============================================");
+//        Serial.println("==============================================");
+//        Serial.println("DESIRED XYR DOT");
+//        Serial.println("M1: " + String(desired_h_xdot ));
+//        Serial.println("M2: " + String(desired_h_ydot ));
+//        Serial.println("MT: " + String(desired_h_rdot));
+//        Serial.println("DESIRED MOTOR VELOCITIES");
+//        Serial.println("M1: " + String(desired_M1_v));
+//        Serial.println("M2: " + String(desired_M2_v));
+//        Serial.println("MT: " + String(desired_MT_v));
+//        Serial.println("ACTUAL MOTOR VELOCITIES");
+//        Serial.println("M1: " + String(sensed_M1_v));
+//        Serial.println("M2: " + String(sensed_M2_v));
+//        Serial.println("MT: " + String(sensed_MT_v));
+//        Serial.println("PID ERRORS");
+//        Serial.println("M1: " + String(pid_vars_M1.error_acc));
+//        Serial.println("M2: " + String(pid_vars_M1.error_acc));
+//        Serial.println("MT: " + String(pid_vars_MT.error_acc));
+//        Serial.println("==============================================");
   
         if (use_dif_drive) {
             // NOTE: Differential drive is broken currently-
@@ -688,6 +681,18 @@ void set_speed_of_motors() {
 //    }
 //}
 
+void check_wifi_status() {
+  if (status != WiFi.status()) {
+    status = WiFi.status();
+    Serial.println("WiFi status changed: ");
+    if (status == WL_AP_CONNECTED) {
+      Serial.println("A device has connected to the HAMR Access Point");
+    } else {
+      Serial.println("A device has disconnected from the HAMR Access point: ");
+    }
+  }
+}
+
 void check_incoming_messages() {
     int packet_size = Udp.parsePacket();
     if (packet_size) {
@@ -699,8 +704,6 @@ void check_incoming_messages() {
       handle_message(msg_manager, packet_buffer);
     }    
 }
-
-
 
 void handle_message(MESSAGE_MANAGER_t* msg_manager, char* val) {
     uint8 msg_id = val[0];
