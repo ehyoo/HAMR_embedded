@@ -261,8 +261,6 @@ void setup() {
 //    angle_sensor_M2.close();// close after each init to allow spi to start again
 //    angle_sensor_MT.init();// i made the clock 10Mhz. it was 1Mhz to star
 //    
-    
-    
     Serial.println("Done initializing the sensors.");
     Serial.println("HAMR Ready!");
 }
@@ -274,8 +272,7 @@ void start_wifi() {
   }
   Serial.println("Creating access point named:");
   Serial.println(ssid);
-//  status = WiFi.beginAP(ssid, keyIndex, pass);
-  status = WiFi.beginAP(ssid);
+  status = WiFi.beginAP(ssid, 1, pass, 1);
   if (status != WL_AP_LISTENING) {
     Serial.println("Creating the access point failed.");
     while (true);
