@@ -5,7 +5,9 @@
 
 typedef struct __attribute__ ((__packed__)) {
     HolonomicVelocity holo_vel_struct;
+    DifDriveVelocity dif_drive_vel_struct;
 } MESSAGE_MANAGER_t;
 
 #endif
+
 
