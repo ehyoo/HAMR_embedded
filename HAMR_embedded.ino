@@ -1086,6 +1086,7 @@ void init_actuators() {
     analogWrite(MT_PWM_PIN, 0);
 }
 
+int encoder_max = 16383;
 void compute_sensed_motor_velocities() {
     // Gets the current position, calculates velocity from current and previous
 
@@ -1094,6 +1095,10 @@ void compute_sensed_motor_velocities() {
     decoder_count_M2 = (int) angle_sensor_M2.getRawRotation();
     decoder_count_MT = (int) angle_sensor_MT.getRawRotation();
 
+    decoder_count_M1 = encoder_max - decoder_count_M1;
+    decoder_count_M2 = encoder_max - decoder_count_M2;
+    decoder_count_MT = encoder_max - decoder_count_MT;
+  
     angle_sensor_M1.getErrors();
     angle_sensor_M2.getErrors();
     angle_sensor_MT.getErrors();
