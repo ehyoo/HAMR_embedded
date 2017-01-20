@@ -31,17 +31,19 @@ typedef struct PID_Vars {
         pidTerm = 0;    //guarantees no jitter when system is at rest      
       } else {   
 
-      float errorDif = error - error_prev;  //defines Derivative Term
+         float errorDif = error - error_prev;  //defines Derivative Term
 
-      error_acc += error * (time_elapsed/1000.0);   //defines Integral Term
-      error_acc = constrain((error_acc), -1*error_acc_limit, error_acc_limit); // Anti integrator windup using clamping
+          error_acc += error * (time_elapsed/1000.0);   //defines Integral Term
+          error_acc = constrain((error_acc), -1*error_acc_limit, error_acc_limit); // Anti integrator windup using clamping
 
-      // Low Pass Filter
-      // float beta = 0.5;
-      // float filteredDifference = beta * errorDif + (1 - beta) * prevErrorDif;
+          // Low Pass Filter
+          // float beta = 0.5;
+          // float filteredDifference = beta * errorDif + (1 - beta) * prevErrorDif;
 
-      //pidTerm = (Kp * error) + (Kd * (filteredDifference) / (time_elapsed/1000.0)) + (Ki * (error_acc));      
-      pidTerm = (Kp * error) + (Kd * (errorDif) / (time_elapsed/1000.0)) + (Ki * (error_acc));  //The PID Controller
+          //pidTerm = (Kp * error) + (Kd * (filteredDifference) / (time_elapsed/1000.0)) + (Ki * (error_acc));      
+//          Ki = 0;
+          Kd = 0;
+          pidTerm = (Kp * error) + (Kd * (errorDif) / (time_elapsed/1000.0)) + (Ki * (error_acc));  //The PID Controller
       }
   
     /*

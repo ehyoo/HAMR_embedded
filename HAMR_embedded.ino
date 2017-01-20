@@ -45,7 +45,7 @@ float desired_h_rdot = 0;
 // differential drive velocities
 float desired_dd_v = 0; // Diff Drive (m/s)
 float desired_dd_r = 0; // desired angular velocity for Diff Drive: set between [-1,1] by controller, mapped to [-90,90] degrees in code
-// float speed_req_turret = 0.0; // Turret (rad/s)?
+// float speed_req_turret = 0acmacm.0; // Turret (rad/s)?
 
 // motor velocities
 float desired_M1_v = 0; 
@@ -200,9 +200,9 @@ bool use_holonomic_drive = true; // Full fledged holonomic drive
 float prev_sensed_velocity_right;
 float prev_sensed_velocity_left;
 float prev_sensed_velocity_turret;
-//AS5048A angle_sensor_M1(11);
-//AS5048A angle_sensor_M2(7);
-//AS5048A angle_sensor_MT(6);
+AS5048A angle_sensor_M1(11);
+AS5048A angle_sensor_M2(7);
+AS5048A angle_sensor_MT(6);
 /**** RECOMMENT THIS 1/13/2017 ****/
 
 /***********************/
@@ -224,7 +224,7 @@ float dummy2 = 0;
 /*         Wifi        */
 /***********************/
 int status = WL_IDLE_STATUS;
-char ssid[] = "hamr_net"; // network name
+char ssid[] = "hamr_net_test_4"; // network name
 char pass[] = "1231231234"; // Needed only for WEP.
 int keyIndex = 0;
 WiFiServer server(80);
@@ -255,11 +255,11 @@ void setup() {
     // input reading setup
     Serial.println("Initializing the sensors");
 
-//    angle_sensor_M1.init();
-//    angle_sensor_M1.close();// close after each init to allow spi to start again
-//    angle_sensor_M2.init();// i made the clock 10Mhz. it was 1Mhz to star
-//    angle_sensor_M2.close();// close after each init to allow spi to start again
-//    angle_sensor_MT.init();// i made the clock 10Mhz. it was 1Mhz to star
+    angle_sensor_M1.init();
+    angle_sensor_M1.close();// close after each init to allow spi to start again
+    angle_sensor_M2.init();// i made the clock 10Mhz. it was 1Mhz to star
+    angle_sensor_M2.close();// close after each init to allow spi to start again
+    angle_sensor_MT.init();// i made the clock 10Mhz. it was 1Mhz to star
 //    
     Serial.println("Done initializing the sensors.");
     Serial.println("HAMR Ready!");
@@ -327,33 +327,39 @@ void loop() {
         //send_basic_info();
         check_for_test_execution(); // takes care of drive demo test commands.TODO prevent this from running test if kill command was sent
 //        Serial.println("==============================================");
-//        Serial.println("DESIRED XYR DOT");
-//        Serial.println("M1: " + String(desired_h_xdot ));
-//        Serial.println("M2: " + String(desired_h_ydot ));
-//        Serial.println("MT: " + String(desired_h_rdot));
+////        Serial.println("DESIRED XYR DOT");
+////        Serial.println("M1: " + String(desired_h_xdot ));
+////        Serial.println("M2: " + String(desired_h_ydot ));
+////        Serial.println("MT: " + String(desired_h_rdot));
 //        Serial.println("DESIRED MOTOR VELOCITIES");
 //
 //        Serial.println("M1: " + String(desired_M1_v));
 //        Serial.println("M2: " + String(desired_M2_v));
 //        Serial.println("MT: " + String(desired_MT_v));
+////        Serial.println("==============================================");
 //        Serial.println("ACTUAL MOTOR VELOCITIES");
 //        Serial.println("M1: " + String(sensed_M1_v));
 //        Serial.println("M2: " + String(sensed_M2_v));
 //        Serial.println("MT: " + String(sensed_MT_v));
 //        Serial.println("PID ERRORS");
 //        Serial.println("M1: " + String(pid_vars_M1.error_acc));
-//        Serial.println("M2: " + String(pid_vars_M1.error_acc));
+//        Serial.println("M2: " + String(pid_vars_M2.error_acc));
 //        Serial.println("MT: " + String(pid_vars_MT.error_acc));
 //        Serial.println("==============================================");
   
         if (use_holonomic_drive) {
-            Serial.println("This should not hit ever");
             holonomic_drive();
-        }
-        
-        Serial.println("M1: " + String(desired_M1_v));
-        Serial.println("M2: " + String(desired_M2_v));
-        Serial.println("MT: " + String(desired_MT_v));
+        } 
+        Serial.println("==============================================");
+        Serial.println(M1_v_cmd);
+        Serial.println(M2_v_cmd);
+        Serial.println(MT_v_cmd);
+        Serial.println("==============================================");
+
+//        
+//        Serial.println("Sensed M1: " + String(sensed_M1_v));
+//        Serial.println("Sensed M2: " + String(sensed_M2_v));
+//        Serial.println("Sensed MT: " + String(sensed_MT_v));
         set_speed_of_motors();
     }
 
@@ -385,16 +391,8 @@ void loop() {
 
 void differential_drive() {
     // takes care of differential drive
-    int use_dd_control = 1;
-    if (use_dd_control == 0) {
-        // PID velocity control, same input to both motors
-        desired_M1_v = desired_dd_v;
-        desired_M2_v = desired_dd_v;
-    } else if (use_dd_control == 1) {
-        // Differential drive control
-        // how do we find the measured angular velocity from encoders??
-        // desired_
-        angle_control(&dd_ctrl, 
+
+            angle_control(&dd_ctrl, 
                 desired_dd_r, 
                 sensed_MT_v, 
                 &dtheta_cmd, 
@@ -404,11 +402,23 @@ void differential_drive() {
                 WHEEL_DIST, 
                 WHEEL_RADIUS, 
                 time_elapsed);
-    } else {
-        // use indiv setpoints
-        desired_M1_v = (desired_dd_v - (WHEEL_DIST/2.0) * PI/2.0);
-        desired_M2_v = (desired_dd_v + (WHEEL_DIST/2.0) * PI/2.0);
-    }
+    
+    
+//    int use_dd_control = 1;
+//    if (use_dd_control == 0) {
+//        // PID velocity control, same input to both motors
+//        desired_M1_v = desired_dd_v;
+//        desired_M2_v = desired_dd_v;
+//    } else if (use_dd_control == 1) {
+//        // Differential drive control
+//        // how do we find the measured angular velocity from encoders??
+//        // desired_
+//
+//    } else {
+//        // use indiv setpoints
+//        desired_M1_v = (desired_dd_v - (WHEEL_DIST/2.0) * PI/2.0);
+//        desired_M2_v = (desired_dd_v + (WHEEL_DIST/2.0) * PI/2.0);
+//    }
 }
 
 void holonomic_drive() {
@@ -1080,19 +1090,19 @@ void compute_sensed_motor_velocities() {
     // Gets the current position, calculates velocity from current and previous
 
 /*** RECOMMENT THIS (1/13/2017) **/
-//    decoder_count_M1 = (int) angle_sensor_M1.getRawRotation();
-//    decoder_count_M2 = (int) angle_sensor_M2.getRawRotation();
-//    decoder_count_MT = (int) angle_sensor_MT.getRawRotation();
+    decoder_count_M1 = (int) angle_sensor_M1.getRawRotation();
+    decoder_count_M2 = (int) angle_sensor_M2.getRawRotation();
+    decoder_count_MT = (int) angle_sensor_MT.getRawRotation();
 
-//    angle_sensor_M1.getErrors();
-//    angle_sensor_M2.getErrors();
-//    angle_sensor_MT.getErrors();
+    angle_sensor_M1.getErrors();
+    angle_sensor_M2.getErrors();
+    angle_sensor_MT.getErrors();
 
     // Calculating the difference between prev and current sensed positions
     float decoder_count_change_M1 = calculate_decoder_count_change(decoder_count_M1_prev, decoder_count_M1, 16383, 1600, 14000);
     float decoder_count_change_M2 = calculate_decoder_count_change(decoder_count_M2_prev, decoder_count_M2, 16383, 1600, 14000);
     float decoder_count_change_MT = calculate_decoder_count_change(decoder_count_MT_prev, decoder_count_MT, 16383, 1600, 14000);
-
+    
     // Puts change into the total so we know the drive angle of turret
     decoder_turret_total -= decoder_count_change_MT;
     // turret_tick_change = decoder_count_change_MT; // For debugging purposes, see send_serial above
@@ -1130,10 +1140,17 @@ void compute_sensed_motor_velocities() {
     // Then pass velocities to filter to get 'true' velocity
     // M1 and M2 returns m/s
     // MT returns degrees/s
+
     sensed_M1_v = low_pass_velocity_filter(current_vel_right, prev_sensed_velocity_right);
     sensed_M2_v = low_pass_velocity_filter(current_vel_left, prev_sensed_velocity_left);
     sensed_MT_v = low_pass_velocity_filter(current_vel_turret, prev_sensed_velocity_turret);
 
+//    Serial.println("===================");
+//    Serial.println(sensed_M1_v);
+//    Serial.println(sensed_M2_v);
+//    Serial.println(sensed_MT_v);
+//    Serial.println("===================");
+    
     // then assign current velocity to previous
     prev_sensed_velocity_right = current_vel_right;
     prev_sensed_velocity_left = current_vel_left;
