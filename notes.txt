@@ -1,4 +1,11 @@
-Updated 1/9/2017
-Test UDP access point code
-Integrate motor control mode (individual motor driving)
-Fix control bugs in general.
+Updated 1/20/2017
+
+Python:
+    Clean up CLI
+    Joystick Control
+Embedded:
+    Cleaning up embedded code + Documentation
+    HAMR_status message
+    Make Control Loop as fast as comfortably possible
+    smoother velocity filtering
+    Position Control for turret
