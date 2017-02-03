@@ -1,11 +1,4 @@
-Updated 1/20/2017
-
-Python:
-    Clean up CLI
-    Joystick Control
 Embedded:
-    Cleaning up embedded code + Documentation
     HAMR_status message
-    Make Control Loop as fast as comfortably possible
     smoother velocity filtering
     Position Control for turret

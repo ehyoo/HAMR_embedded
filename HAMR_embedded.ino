@@ -1,7 +1,6 @@
 /*************************************/
 /*                                   */
 /*          HAMR_embedded.ino        */
-/* Version 3.1 of HAMR embedded code */
 /*               MODLAB              */
 /*                                   */
 /*************************************/
@@ -9,9 +8,7 @@
 // M1 => RIGHT MOTOR
 // M2 => LEFT MOTOR
 // MT => TURRET MOTOR
-
 #include <Wire.h> // I2C 
-///#include <libas.h> // SSI Communication
 #include <AS5048A.h>
 #include <SPI.h>
 #include <WiFi101.h>
@@ -42,11 +39,6 @@ float desired_h_xdot = 0;
 float desired_h_ydot = 0; 
 float desired_h_rdot = 0;
 
-// differential drive velocities
-float desired_dd_v = 0; // Diff Drive (m/s)
-float desired_dd_r = 0; // desired angular velocity for Diff Drive: set between [-1,1] by controller, mapped to [-90,90] degrees in code
-// float speed_req_turret = 0acmacm.0; // Turret (rad/s)?
-
 // motor velocities
 float desired_M1_v = 0; 
 float desired_M2_v = 0; 
@@ -66,23 +58,6 @@ float sensed_M1_v_prev = 0.0;
 float sensed_M2_v_prev = 0.0;
 float sensed_MT_v_prev = 0.0;
 
-// Velocity after the sensed_M[x]_v is passed through the filter
-// NOTE: This should be the velocity used for all calculations
-float sensed_M1_v_filt = 0.0;
-float sensed_M2_v_filt = 0.0;
-float sensed_MT_v_filt = 0.0;
-
-/*****************/
-/* ReadIn Values */
-/*****************/
-volatile boolean periodComplete;
-volatile uint16_t isrPeriod1;
-volatile uint16_t isrPulsewidth1;
-volatile uint16_t isrPeriod2;
-volatile uint16_t isrPulsewidth2;
-volatile uint16_t isrPeriod3;
-volatile uint16_t isrPulsewidth3;
-
 /************************/
 /*    Computed Values   */
 /************************/
@@ -92,14 +67,11 @@ float computed_ydot = 0.0;
 float computed_tdot = 0.0;
 
 // Summation of turret 
-// TODO: This will eventually overflow after a long time #
-// This is a corner case that shouldn't happen in normal operation, but still.
-long decoder_turret_total = 0;
+long decoder_turret_total = 0; // Be careful of overflow
 
 /******************/
 /* Set Speed Vars */
 /******************/
-// NOTE: I don't see why these should be vars in the main file
 // motor PWMs
 int pwm_M1 = 0;
 int pwm_M2 = 0;
@@ -133,21 +105,9 @@ float dtheta_cmd = 0; //differential drive
 /*       Sensor       */
 /**********************/
 // decoder counts
-// M1 and M2 are between 0 and 4095
-// MT is between 0 and 1093
 int decoder_count_M1 = 0;
 int decoder_count_M2 = 0;
 int decoder_count_MT = 0;
-
-// Size of the array used for the lowpass filter
-// If the array low pass filter is commented out (which it usually is)
-// this should not be used
-const int AVG_FILT_SZ = 5;
-
-// Arrays for said lowpass filters
-float decoder_count_arr_M1[AVG_FILT_SZ];
-float decoder_count_arr_M2[AVG_FILT_SZ];
-float decoder_count_arr_MT[10]; // arbitrarily set to 10
 
 // Previously recorded motor readings- used to find velocity
 int decoder_count_M1_prev = 0;
@@ -168,7 +128,8 @@ float sensed_drive_angle = 0;
 /************************/
 unsigned long start_time; // Time at which the arduino starts
 unsigned long last_recorded_time = 0;
-float time_elapsed; // start_time - last_recorded_time
+float time_elapsed; // microseconds
+float time_elapsed_millis; // time_elapsed converted 
 int loop_time_duration; // Timing loop time- for performance testing
 
 /******************************/
@@ -203,7 +164,6 @@ float prev_sensed_velocity_turret;
 AS5048A angle_sensor_M1(11);
 AS5048A angle_sensor_M2(7);
 AS5048A angle_sensor_MT(6);
-/**** RECOMMENT THIS 1/13/2017 ****/
 
 /***********************/
 /*    Miscellaneous    */
@@ -214,18 +174,16 @@ bool did_set_offset = false;
 
 // dd localization
 location hamr_loc; // This isn't being used right now. 
-// Debugging vars- we should look to delete these
 float pidError; // PID debugging for turret. See pid.h
-float dummy1 = 0;
+float dummy1 = 0; // serves as dummy placeholder from original code.
 float dummy2 = 0;
-
 
 /***********************/
 /*         Wifi        */
 /***********************/
 int status = WL_IDLE_STATUS;
-char ssid[] = "hamr_net_test_5"; // network name
-char pass[] = "1231231234"; // Needed only for WEP.
+char ssid[] = "hamr_net"; // network name
+char pass[] = "1231231234"; // WEP password. Change when appropraite
 int keyIndex = 0;
 WiFiServer server(80);
 unsigned int local_port = 2390; // arbitrary local port selected to listen on
@@ -320,7 +278,6 @@ void check_wifi_status() {
   }
 }
 
-
 /**
  * Debugging convenience method that blinks the builtin LED.
  */
@@ -339,15 +296,16 @@ void blink_times(int i) {
 /*                                                 */
 /***************************************************/
 void loop() {
-    loop_time_duration = millis() - last_recorded_time;
-    if ((millis() - last_recorded_time) >= LOOPTIME) { // ensures stable loop time
-        time_elapsed = (float) (millis() - last_recorded_time);
-        last_recorded_time = millis();
+    loop_time_duration = micros() - last_recorded_time;
+    if ((micros() - last_recorded_time) >= LOOPTIME) { // ensures stable loop time
+        time_elapsed = (float) (micros() - last_recorded_time);
+        time_elapsed_millis = converted_time_elapsed();
+        last_recorded_time = micros();
         check_wifi_status();
         check_incoming_messages();
         compute_sensed_motor_velocities();
         calculate_sensed_drive_angle();
-        check_for_test_execution(); // takes care of drive demo test commands.TODO prevent this from running test if kill command was sent
+        // check_for_test_execution(); // takes care of drive demo test commands.TODO prevent this from running test if kill command was sent
         if (use_holonomic_drive) {
             holonomic_drive();
         } 
@@ -391,6 +349,14 @@ void print_pid_errors() {
     Serial.println("M2: " + String(pid_vars_M2.error_acc));
     Serial.println("MT: " + String(pid_vars_MT.error_acc));
 }
+
+/**
+ * Returns the microsecond measured time converted to milliseconds
+ * @returns Milliseconds of time_elapsed
+ */
+ float converted_time_elapsed() {
+    return time_elapsed * 0.001;
+ }
 
 /************************/
 /*   Driving Functions  */
@@ -441,7 +407,7 @@ void set_speed_of_motors() {
             desired_M1_v,
             sensed_M1_v,
             &M1_v_cmd,
-            time_elapsed,
+            time_elapsed_millis,
             &pwm_M1,
             M1_DIR_PIN,
             M1_PWM_PIN,
@@ -450,7 +416,7 @@ void set_speed_of_motors() {
             desired_M2_v,
             sensed_M2_v,
             &M2_v_cmd,
-            time_elapsed,
+            time_elapsed_millis,
             &pwm_M2,
             M2_DIR_PIN,
             M2_PWM_PIN,
@@ -459,7 +425,7 @@ void set_speed_of_motors() {
                         desired_MT_v,
                         sensed_MT_v,
                         &MT_v_cmd,
-                        time_elapsed,
+                        time_elapsed_millis,
                         &pwm_MT,
                         MT_DIR_PIN,
                         MT_PWM_PIN,
@@ -479,21 +445,19 @@ void check_incoming_messages() {
       if (len > 0) {
           packet_buffer[len] = 0;
       }
-      Serial.println("message received");
       handle_message(msg_manager, packet_buffer);
     }    
 }
 
 /**
  * Message handler that does necessary actions with the information provided.
- * @param msg_manager
- * @param val
+ * @param msg_manager Instance of the message manager to identify incoming messages
+ * @param val The message packet that has yet to be identified.
  */
 void handle_message(MESSAGE_MANAGER_t* msg_manager, char* val) {
     uint8 msg_id = val[0];
     switch (msg_id) {
         case HolonomicVelocityMessageType: {
-            Serial.println("it was a holonomic message");
             use_holonomic_drive = true;
             HolonomicVelocity *msg = (HolonomicVelocity*) val;
             msg_manager->holo_vel_struct = *msg;
@@ -504,16 +468,15 @@ void handle_message(MESSAGE_MANAGER_t* msg_manager, char* val) {
         }
 
         case DifDriveVelocityMessageType: {
-          Serial.println("it was a difdrive message");
           DifDriveVelocity *msg = (DifDriveVelocity*) val;
           msg_manager->dif_drive_vel_struct = *msg;
           use_holonomic_drive = false;
           desired_M1_v = msg_manager->dif_drive_vel_struct.left_v;
           desired_M2_v = msg_manager->dif_drive_vel_struct.right_v;
           desired_MT_v = msg_manager->dif_drive_vel_struct.turret_v;
-          
           break;
         }
+        
       // Tests on command            
         case -100:
             // Square Test
@@ -546,7 +509,7 @@ void handle_message(MESSAGE_MANAGER_t* msg_manager, char* val) {
             break;
             
         default:
-            Serial.println("it's something at least");
+            Serial.println("Message not recognized.");
             break;
     }
 }
@@ -598,9 +561,9 @@ void compute_sensed_motor_velocities() {
     decoder_count_M2_prev = decoder_count_M2;
     decoder_count_MT_prev = decoder_count_MT;
     // Get current velocities from differences
-    float current_vel_right = get_speed_from_difference(decoder_count_change_M1, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed); // m/s
-    float current_vel_left = get_speed_from_difference(decoder_count_change_M2, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed); // m/s
-    float current_vel_turret = get_ang_speed_from_difference(decoder_count_change_MT, TICKS_PER_REV_TURRET, time_elapsed); // degrees/s
+    float current_vel_right = get_speed_from_difference(decoder_count_change_M1, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed_millis); // m/s
+    float current_vel_left = get_speed_from_difference(decoder_count_change_M2, TICKS_PER_REV_DDRIVE, DIST_PER_REV, time_elapsed_millis); // m/s
+    float current_vel_turret = get_ang_speed_from_difference(decoder_count_change_MT, TICKS_PER_REV_TURRET, time_elapsed_millis); // degrees/s
     // Pass instantaneous velocities into low pass filter and set them as the sensed velocities
     sensed_M1_v = low_pass_velocity_filter(current_vel_right, prev_sensed_velocity_right);
     sensed_M2_v = low_pass_velocity_filter(current_vel_left, prev_sensed_velocity_left);
@@ -649,7 +612,7 @@ float calculate_decoder_count_change(int prev, int current, int max, int lim_min
 /******************/
 // Hamr V3 does not have I2C implementation yet. 
 void init_I2C() {
-s  Wire.begin();
+  Wire.begin();
 }
 
 void request_decoder_count(char slave_addr) {
@@ -685,31 +648,32 @@ void test_I2C_decoder_count() {
 /*              Holonomic Drive Tests              */
 /*                                                 */
 /***************************************************/
+// NOTE: Feb 3, 2017- Drive Tests have not been tested with the new code base. 
+// There is no messaging protocol that triggers the tests- they should be made.
+/**
+ * Checks if the flag has been set to begin a behavior test.
+ */
 void check_for_test_execution() {
   // checks if the HAMR should start to execute any tests
     if (square_test_did_start) {
-        
         if (!timer_set) {
             start_test_time = millis();
             timer_set = true;
         }
         square_vid_test();  
     } else if (right_test_did_start) {
-        
         if (!timer_set) {
             start_test_time = millis();
             timer_set = true;
         }
         right_angle_vid_test();
     }else if (circle_test_did_start) {
-        
         if (!timer_set) {
             start_test_time = millis();
             timer_set = true;
         }
         circle_test();
     }else if (spiral_test_did_start) {
-        
         if (!timer_set) {
             start_test_time = millis();
             timer_set = true;
@@ -728,32 +692,6 @@ void check_for_test_execution() {
         }
         heading_circle_test();
     } 
-}
-
-int increment = 1;
-int pwm = 0;
-void test_motors() {
-    // We have never used this function before.
-    // I left it in just in case
-    pwm += increment;
-    if (pwm > 30) {
-        increment = -1;
-    } else if (pwm < 1) {
-        increment = 1;
-        digitalWrite(M1_DIR_PIN, LOW);
-        digitalWrite(M2_DIR_PIN, HIGH);
-        //    digitalWrite(MT_DIR_PIN, LOW);
-    }
-
-    analogWrite(M1_PWM_PIN, pwm);
-    analogWrite(M2_PWM_PIN, pwm);
-    //  analogWrite(MT_PWM_PIN, pwm);
-
-    Serial.print("M1_PWM_PIN: "); Serial.println(M1_PWM_PIN);
-    Serial.print("M2_PWM_PIN: "); Serial.println(M2_PWM_PIN);
-    //  Serial.print("MT_PWM_PIN: "); Serial.println(MT_PWM_PIN);
-    Serial.print("pwm: "); Serial.println(pwm);
-    delay(50);
 }
 
 /*SQUARE VIDEO TEST*/
@@ -784,7 +722,6 @@ void square_vid_test() {
 
 /*RIGHT ANGLE VIDEO TEST*/
 void right_angle_vid_test() {
-  
     if(millis() < start_test_time + 3000) {
         desired_h_xdot = 0;
         desired_h_ydot = 0;
@@ -803,47 +740,43 @@ void right_angle_vid_test() {
 }
 
 void circle_test() {
-  debugmessage = -1;
-  int circle_size = 4;
-  if(millis() < start_test_time + 5000) {
-    desired_h_xdot = 0;
-    desired_h_ydot = 0;
-      debugmessage = 1;
-
-  } else if(millis() < start_test_time + 5000 + circle_size*6282) {
-  seconds = (float)(millis() - start_test_time-5000)/1000.0;
-  R = .2;
-    
-    desired_h_xdot = (float)-R * (float)sin(seconds/(float)circle_size);  //6.28*circle_size second revolution
-  desired_h_ydot = (float)R * (float)cos(seconds/(float)circle_size);
-  debugmessage = desired_h_xdot;
-
-  }else {
+    debugmessage = -1;
+    int circle_size = 4;
+    if(millis() < start_test_time + 5000) {
+        desired_h_xdot = 0;
+        desired_h_ydot = 0;
+        debugmessage = 1;
+    } else if (millis() < start_test_time + 5000 + circle_size*6282) {
+        seconds = (float)(millis() - start_test_time-5000)/1000.0;
+        R = .2;
+        desired_h_xdot = (float)-R * (float)sin(seconds/(float)circle_size);  //6.28*circle_size second revolution
+        desired_h_ydot = (float)R * (float)cos(seconds/(float)circle_size);
+        debugmessage = desired_h_xdot;
+    } else {
         desired_h_xdot = 0;
         desired_h_ydot = 0;
         circle_test_did_start = false;
         timer_set = false;
-          debugmessage = 3;
- 
-  } 
+        debugmessage = 3;
+    } 
 }
 
 void sinusoid_test() {
   int curve_size = 2;
-  if(millis() < start_test_time + 5000) {
-    desired_h_xdot = 0;
-    desired_h_ydot = 0;
-  } else if(millis() < start_test_time + 5000 + 6282*curve_size) {
-  seconds = (float)(millis() - start_test_time-5000)/1000.0;
-  R = .2;
-  desired_h_xdot = -R * sin(seconds/(float)curve_size);  //6.28*curve_size second revolution
-  desired_h_ydot = R;  
-  }else {
+  if (millis() < start_test_time + 5000) {
+        desired_h_xdot = 0;
+        desired_h_ydot = 0;
+    } else if (millis() < start_test_time + 5000 + 6282*curve_size) {
+        seconds = (float)(millis() - start_test_time-5000)/1000.0;
+        R = .2;
+        desired_h_xdot = -R * sin(seconds/(float)curve_size);  //6.28*curve_size second revolution
+        desired_h_ydot = R;  
+    } else {
         desired_h_xdot = 0;
         desired_h_ydot = 0;
         sine_test_did_start = false;
         timer_set = false;
-  }
+    }
 }
 
 void spiral_test() {
@@ -916,35 +849,4 @@ void zipper_path() {
       desired_h_xdot = 0.0;
       desired_h_ydot = 0.0;
     }
-}
-
-void test_ADA() {
-    // We've never used this function either
-    pwm_M1 = adjust_speed(pwm_M1, desired_M1_v);
-    pwm_M2 = adjust_speed(pwm_M2, desired_M2_v);
-    pwm_MT = adjust_speed(pwm_MT, desired_MT_v);
-
-    analogWrite(M1_PWM_PIN, pwm_M1);
-    analogWrite(M2_PWM_PIN, pwm_M2);
-    analogWrite(MT_PWM_PIN, pwm_MT);
-
-    digitalWrite(M1_DIR_PIN, (desired_M1_v >= 0) ? M1_FORWARD : !M1_FORWARD);
-    digitalWrite(M2_DIR_PIN, (desired_M2_v >= 0) ? M2_FORWARD : !M2_FORWARD);
-    digitalWrite(MT_DIR_PIN, (desired_MT_v >= 0) ? MT_COUNTER : !MT_COUNTER);
-
-
-    Serial.print("pwm_M1: "); Serial.println(pwm_M1);
-    Serial.print("pwm_M2: "); Serial.println(pwm_M2);
-    Serial.print("pwm_MT: "); Serial.println(pwm_MT);
-    Serial.print("pwm: "); Serial.println(pwm);
-    delay(10);
-}
-
-int adjust_speed(int pwm, int desired) {
-    if (pwm > abs(desired)) {
-        pwm = abs(desired);
-    } else if (pwm < abs(desired)) {
-        pwm++;
-    }
-    return pwm;
 }
