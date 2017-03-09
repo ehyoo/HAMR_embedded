@@ -11,26 +11,26 @@
  * Robot Physical Constants. MODIFY THESE TO REFLECT NEW ROBOT
  */
 #define TICKS_PER_REV_DDRIVE  16383.0                  // number of encoder ticks in one full rotation on diff drive motor
-#define TICKS_PER_REV_TURRET  16383.0 * (220.0/24.0)*(1.0+8.0/360.0)  // actual measured 1024.0 * (220/24) (16383 the new encoder, 220/24 being the other gear)
+#define TICKS_PER_REV_TURRET  16383.0 * (220.0/24.0)*(1.0+8.0/360.0)*16  // actual measured 1024.0 * (220/24) (16383 the new encoder, 220/24 being the other gear, 16 being the turret motor gearbox)
 #define WHEEL_DIAMETER        0.12192                 // actually 4.85 ' diameter // in meters (4.8' diameter)  
 #define WHEEL_RADIUS          (WHEEL_DIAMETER / 2.0)  // wheel radius, in meters
-#define WHEEL_DIST            0.328168                // distance between diff drive wheels, in meters (12.92')
+#define WHEEL_DIST            0.270413 //0.328168                // distance between diff drive wheels, in meters (12.92')
 #define DIST_PER_REV          (PI*WHEEL_DIAMETER)     // circumference of wheel in meters
 #define LOOPTIME              1000                    // Desired speed of the main loop in microseconds
 
 
 /**
  * Pin Definitions
- * M1 = Right motor
- * M2 = Left motor
- * MT = Turret motor
+ * M1 = Right motor. actually i think this is left: andrew
+ * M2 = Left motor. actuall i think this is right: andrew
+ * MT = Turret motor. cw is positive.
  */
 /* Motor Driver Pinouts */
-#define M1_PWM_PIN 5
-#define M1_DIR_PIN 0
+#define M2_PWM_PIN 5
+#define M2_DIR_PIN 0
 
-#define M2_PWM_PIN 4
-#define M2_DIR_PIN 1
+#define M1_PWM_PIN 4
+#define M1_DIR_PIN 1
 
 #define MT_PWM_PIN 3
 #define MT_DIR_PIN 2

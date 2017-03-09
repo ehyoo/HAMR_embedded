@@ -3,8 +3,8 @@
 #include "Arduino.h"
 #include "constants.h"
 
-#define DIM_A 0.165
-#define DIM_B 0.165
+#define DIM_A 0.1352065
+#define DIM_B 0.1352065
 #define DIM_R WHEEL_RADIUS
 
 // this value will determine how quickly to change the setpoint

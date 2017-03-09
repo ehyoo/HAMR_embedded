@@ -16,7 +16,7 @@
 #include "pid.h"
 #include "motor.h"
 #include "localize.h"
-#include "hamr_imu.h"
+//#include "hamr_imu.h"
 #include "dd_control.h"
 #include "constants.h"
 #include "holonomic_control.h"
@@ -161,8 +161,8 @@ bool use_holonomic_drive = true; // Full fledged holonomic drive
 float prev_sensed_velocity_right;
 float prev_sensed_velocity_left;
 float prev_sensed_velocity_turret;
-AS5048A angle_sensor_M1(11);
-AS5048A angle_sensor_M2(7);
+AS5048A angle_sensor_M2(11);
+AS5048A angle_sensor_M1(7);
 AS5048A angle_sensor_MT(6);
 
 /***********************/
@@ -310,6 +310,9 @@ void loop() {
             holonomic_drive();
         } 
         set_speed_of_motors();
+        //print_pid_errors();
+       // print_desired_motor_velocities();
+       // print_actual_motor_velocities();
     }
 }
 
@@ -446,6 +449,7 @@ void check_incoming_messages() {
           packet_buffer[len] = 0;
       }
       handle_message(msg_manager, packet_buffer);
+      Serial.println("msg recieved");// temp debugging measure. by andrew
     }    
 }
 
@@ -543,9 +547,12 @@ void init_actuators() {
  */
 void compute_sensed_motor_velocities() {
     // Decoder count is offset from the maximum encoder value- fixes different encoder orientation from previous encoders.
-    decoder_count_M1 = TICKS_PER_REV_DDRIVE - (int) angle_sensor_M1.getRawRotation();
-    decoder_count_M2 = TICKS_PER_REV_DDRIVE - (int) angle_sensor_M2.getRawRotation();
+//    decoder_count_M1 = TICKS_PER_REV_DDRIVE - (int) angle_sensor_M1.getRawRotation();
+//    decoder_count_M2 = TICKS_PER_REV_DDRIVE - (int) angle_sensor_M2.getRawRotation();
+    decoder_count_M1 = (int) angle_sensor_M1.getRawRotation();
+    decoder_count_M2 = (int) angle_sensor_M2.getRawRotation();
     decoder_count_MT = TICKS_PER_REV_DDRIVE - (int) angle_sensor_MT.getRawRotation();
+
     // Clear the angle sensor errors.
     angle_sensor_M1.getErrors();
     angle_sensor_M2.getErrors();
