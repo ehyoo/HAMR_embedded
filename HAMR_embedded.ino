@@ -84,9 +84,12 @@ float MT_v_cmd = 0;
 /* Control Parameters */
 /**********************/
 // Low-level PID 
-PID_Vars pid_vars_M1(0.4, 8.0, 0.005);
-PID_Vars pid_vars_M2(0.4, 8.0, 0.005);
+//PID_Vars pid_vars_M1(0.4, 8.0, 0.005);
+//PID_Vars pid_vars_M2(0.4, 8.0, 0.005);
+PID_Vars pid_vars_M1(0.4, 8.0, 0.00);
+PID_Vars pid_vars_M2(0.4, 8.0, 0.00);
 PID_Vars pid_vars_MT(0.005, 0.07, 0.0);
+//PID_Vars pid_vars_MT(0.005, 0.0, 0.0000);
 PID_Vars dd_ctrl(0.1, 0.0, 0.0);
 
 // Holonomic PID- NOT BEING USED
@@ -313,6 +316,10 @@ void loop() {
         //print_pid_errors();
        // print_desired_motor_velocities();
        // print_actual_motor_velocities();
+       //Serial.println(sensed_drive_angle);// print theta orientation
+//       if (loop_time_duration>5000){
+//       Serial.println(loop_time_duration);
+//       }
     }
 }
 
@@ -385,7 +392,7 @@ void holonomic_drive() {
 
 /**
  * Gets the sensed drive angle of the current turret with respect to the initial starting state of the turret.
- * The initial state of the turret is set to an arbitrary 0- so there is no "universal 0".
+ * The initial state of the turret is set to an arbitrary 0- so there is no "universal 0". The value is in rotations, so 0 to -1.0 is 1 full rotation.
  */
 void calculate_sensed_drive_angle() {
     float ticks = TICKS_PER_REV_TURRET;
@@ -449,7 +456,7 @@ void check_incoming_messages() {
           packet_buffer[len] = 0;
       }
       handle_message(msg_manager, packet_buffer);
-      Serial.println("msg recieved");// temp debugging measure. by andrew
+      //Serial.println("rx");// temp debugging measure. by andrew
     }    
 }
 

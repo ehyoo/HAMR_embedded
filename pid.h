@@ -42,7 +42,7 @@ typedef struct PID_Vars {
 
           //pidTerm = (Kp * error) + (Kd * (filteredDifference) / (time_elapsed/1000.0)) + (Ki * (error_acc));      
 //          Ki = 0;
-          Kd = 0;
+         // Kd = 0;
           pidTerm = (Kp * error) + (Kd * (errorDif) / (time_elapsed/1000.0)) + (Ki * (error_acc));  //The PID Controller
       }
   
