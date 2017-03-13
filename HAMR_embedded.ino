@@ -611,15 +611,31 @@ float low_pass_velocity_filter(float current, float prev) {
  * @param lim_max Desired ceiling at which you determine that there has been an overflow.
  * @returns The absolute change between the prev and current values.
  */
-float calculate_decoder_count_change(int prev, int current, int max, int lim_min, int lim_max) {
-    if (prev > lim_max && current < lim_min) {
-        return max - prev + current;
-    } else if (prev < lim_min && current > lim_max) {
-        return -1 * (max - current + prev);
-    } else {
-        return current - prev;
+float calculate_decoder_count_change(int prev, int current, int res_max, int lim_min, int lim_max) {
+    int diff = current-prev;
+    int res_min = 0;
+    if (abs(diff)>res_max/2){
+      if (current>=prev){
+        return ((-1)*((res_max-current)+(prev-res_min)+1));
+      }
+      else{
+        return ((res_max-prev)+(current-res_min)+1);
+      }
+    }
+    else{
+      return diff;
     }
 }
+
+//float calculate_decoder_count_change(int prev, int current, int max, int lim_min, int lim_max) {
+//    if (prev > lim_max && current < lim_min) {
+//        return max - prev + current;
+//    } else if (prev < lim_min && current > lim_max) {
+//        return -1 * (max - current + prev);
+//    } else {
+//        return current - prev;
+//    }
+//}
 
 /******************/
 /*    I2C Code    */
