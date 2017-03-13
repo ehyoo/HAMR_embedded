@@ -134,6 +134,7 @@ unsigned long last_recorded_time = 0;
 float time_elapsed; // microseconds
 float time_elapsed_millis; // time_elapsed converted 
 int loop_time_duration; // Timing loop time- for performance testing
+unsigned long last_debug_time = 0;//Timing tracker for debug messages.
 
 /******************************/
 /*    Test Drive Variables    */
@@ -316,10 +317,16 @@ void loop() {
         //print_pid_errors();
        // print_desired_motor_velocities();
        // print_actual_motor_velocities();
-       //Serial.println(sensed_drive_angle);// print theta orientation
-//       if (loop_time_duration>5000){
-//       Serial.println(loop_time_duration);
-//       }
+       if (micros()-last_debug_time>DEBUGTIME){
+         Serial.print("drive angle: ");
+         Serial.println(360*sensed_drive_angle);// print theta orientation
+         last_debug_time = micros();
+       }
+
+      if (loop_time_duration>5000){ // catch exceptionally long delays
+        Serial.print("delay warning");
+      Serial.println(loop_time_duration);
+      }
     }
 }
 
