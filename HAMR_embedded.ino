@@ -40,7 +40,6 @@ float desired_h_ydot = 0;
 float desired_h_rdot = 0;
 
 // motor velocities
-float desired_M1_v = 0; 
 float desired_M2_v = 0; 
 float desired_MT_v = 0;
 
